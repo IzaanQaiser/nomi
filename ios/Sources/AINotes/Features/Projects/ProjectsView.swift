@@ -85,7 +85,7 @@ struct ProjectsView: View {
     var body: some View {
         NavigationStack(path: $path) {
             GeometryReader { proxy in
-                let sidebarWidth = min(430, max(330, proxy.size.width * 0.34))
+                let sidebarWidth = proxy.size.width * 0.30
 
                 HStack(spacing: 0) {
                     projectSidebar
@@ -274,29 +274,23 @@ struct ProjectsView: View {
 
     private var mascotCanvas: some View {
         GeometryReader { proxy in
-            let mascotSize = max(560, min(proxy.size.width * 1.02, proxy.size.height * 1.08))
+            let mascotSize = min(320, max(240, min(proxy.size.width, proxy.size.height) * 0.40))
 
-            ZStack {
-                NomiTheme.surface
-
-                RadialGradient(
-                    colors: [NomiTheme.blue.opacity(0.11), Color.clear],
-                    center: .center,
-                    startRadius: 40,
-                    endRadius: min(proxy.size.width, proxy.size.height) * 0.62
-                )
-
+            VStack(spacing: 26) {
                 Image("NomiIdle")
                     .resizable()
                     .interpolation(.high)
                     .scaledToFit()
                     .frame(width: mascotSize, height: mascotSize)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
-                    .offset(x: mascotSize * 0.10, y: mascotSize * 0.075)
                     .accessibilityHidden(true)
+
+                Text("lets get this money")
+                    .font(.title2.weight(.medium))
+                    .foregroundStyle(NomiTheme.ink)
             }
-            .clipped()
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
         }
+        .background(NomiTheme.surface)
     }
 
     private var settingsButton: some View {
