@@ -225,7 +225,7 @@ struct CourseContextView: View {
 
     private func hero(compact: Bool) -> some View {
         VStack(spacing: compact ? 8 : 12) {
-            HStack(spacing: 8) {
+            VStack(spacing: compact ? 5 : 7) {
                 Image(mascotAsset)
                     .resizable()
                     .interpolation(.high)
