@@ -84,13 +84,22 @@ struct ProjectsView: View {
 
     var body: some View {
         NavigationStack(path: $path) {
-            VStack(spacing: 0) {
-                homeHeader
+            GeometryReader { proxy in
+                let sidebarWidth = min(430, max(330, proxy.size.width * 0.34))
 
-                if model.projects.isEmpty && !model.isLoading {
-                    emptyState
-                } else {
-                    projectsState
+                HStack(spacing: 0) {
+                    projectSidebar
+                        .frame(width: sidebarWidth)
+
+                    Rectangle()
+                        .fill(NomiTheme.hairline)
+                        .frame(width: 1)
+
+                    mascotCanvas
+                }
+                .overlay(alignment: .topTrailing) {
+                    settingsButton
+                        .padding(24)
                 }
             }
             .background(NomiTheme.paper.ignoresSafeArea())
@@ -165,199 +174,159 @@ struct ProjectsView: View {
         }
     }
 
-    private var homeHeader: some View {
-        HStack {
-            Text("NOMI")
-                .font(.headline.weight(.bold))
-                .tracking(1.4)
-                .foregroundStyle(NomiTheme.ink)
+    private var projectSidebar: some View {
+        VStack(spacing: 0) {
+            sidebarHeader
 
-            Spacer()
-
-            Button {
-                showingBackendSettings = true
-            } label: {
-                Image(systemName: "gearshape")
-                    .font(.title3.weight(.semibold))
-                    .frame(width: 44, height: 44)
+            if model.projects.isEmpty && !model.isLoading {
+                emptySidebar
+            } else {
+                projectList
             }
-            .buttonStyle(.plain)
-            .foregroundStyle(NomiTheme.ink)
-            .background(NomiTheme.surface.opacity(0.82), in: Circle())
-            .overlay(Circle().stroke(NomiTheme.hairline, lineWidth: 0.75))
-            .accessibilityLabel("Settings")
         }
-        .frame(maxWidth: 1080)
-        .padding(.horizontal, 32)
-        .padding(.top, 14)
-        .padding(.bottom, 10)
-        .frame(maxWidth: .infinity)
+        .background(NomiTheme.paper)
+        .shadow(color: NomiTheme.ink.opacity(0.035), radius: 16, x: 6)
+        .zIndex(1)
     }
 
-    private var emptyState: some View {
-        VStack(spacing: 0) {
-            Spacer(minLength: 24)
+    private var sidebarHeader: some View {
+        HStack(alignment: .center, spacing: 12) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text("Your projects")
+                    .font(.title2.bold())
+                    .foregroundStyle(NomiTheme.ink)
+                    .accessibilityAddTraits(.isHeader)
 
-            VStack(spacing: 24) {
-                ZStack {
-                    Circle()
-                        .fill(
-                            RadialGradient(
-                                colors: [NomiTheme.blue.opacity(0.14), NomiTheme.blue.opacity(0)],
-                                center: .center,
-                                startRadius: 24,
-                                endRadius: 116
-                            )
-                        )
-                        .frame(width: 240, height: 240)
-
-                    Image("NomiIdle")
-                        .resizable()
-                        .interpolation(.high)
-                        .scaledToFit()
-                        .frame(width: 104, height: 104)
-                }
-                .frame(height: 154)
-                .accessibilityHidden(true)
-
-                VStack(spacing: 10) {
-                    Text("A quieter way to learn.")
-                        .font(.largeTitle.bold())
-                        .foregroundStyle(NomiTheme.ink)
-                        .accessibilityAddTraits(.isHeader)
-
-                    Text("Create a project, add the material shaping your work,\nthen take notes with Nomi beside you.")
-                        .font(.title3)
-                        .foregroundStyle(NomiTheme.secondaryInk)
-                        .multilineTextAlignment(.center)
-                }
-
-                newProjectButton
-                    .controlSize(.large)
-            }
-
-            Spacer(minLength: 24)
-
-            VStack(spacing: 8) {
-                Text("N  O  M  I")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(NomiTheme.secondaryInk.opacity(0.78))
-                Text("Quiet intelligence. Warm presence.")
+                Text("Pick a project to get back to work.")
                     .font(.footnote)
-                    .foregroundStyle(NomiTheme.secondaryInk.opacity(0.72))
+                    .foregroundStyle(NomiTheme.secondaryInk)
             }
-            .padding(.bottom, 26)
+
+            Spacer(minLength: 8)
+
+            if !model.projects.isEmpty {
+                newProjectButton(compact: true)
+            }
+        }
+        .padding(.horizontal, 20)
+        .padding(.top, 22)
+        .padding(.bottom, 18)
+    }
+
+    private var emptySidebar: some View {
+        VStack(spacing: 0) {
+            Spacer()
+
+            VStack(spacing: 14) {
+                Text("A quieter way to learn.")
+                    .font(.title2.bold())
+                    .foregroundStyle(NomiTheme.ink)
+                    .multilineTextAlignment(.center)
+
+                Text("Create a project, add your course materials, then start taking notes and practicing.")
+                    .font(.subheadline)
+                    .foregroundStyle(NomiTheme.secondaryInk)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                newProjectButton(compact: false)
+                    .padding(.top, 6)
+            }
+            .padding(.horizontal, 30)
+
+            Spacer()
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
-    private var projectsState: some View {
-        VStack(spacing: 16) {
-            HStack(alignment: .bottom, spacing: 24) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Your projects")
-                        .font(.largeTitle.bold())
-                        .foregroundStyle(NomiTheme.ink)
-                    Text("Pick up where you left off.")
-                        .font(.body)
-                        .foregroundStyle(NomiTheme.secondaryInk)
+    private var projectList: some View {
+        List {
+            ForEach(model.projects) { project in
+                ProjectRow(
+                    project: project,
+                    sourceCount: model.sourceCounts[project.id]
+                ) {
+                    path.append(project)
                 }
-
-                Spacer()
-
-                newProjectButton
-            }
-            .frame(maxWidth: 980)
-            .padding(.horizontal, 32)
-
-            List {
-                ForEach(model.projects) { project in
-                    ProjectRow(
-                        project: project,
-                        sourceCount: model.sourceCounts[project.id]
-                    ) {
-                        path.append(project)
-                    }
-                    .listRowInsets(EdgeInsets(top: 5, leading: 24, bottom: 5, trailing: 24))
-                    .listRowBackground(Color.clear)
-                    .listRowSeparator(.hidden)
-                    .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-                        Button(role: .destructive) {
-                            projectPendingDeletion = project
-                        } label: {
-                            Label("Delete", systemImage: "trash")
-                        }
-                    }
-                    .contextMenu {
-                        Button(role: .destructive) {
-                            projectPendingDeletion = project
-                        } label: {
-                            Label("Delete Project", systemImage: "trash")
-                        }
+                .listRowInsets(EdgeInsets(top: 5, leading: 18, bottom: 5, trailing: 18))
+                .listRowBackground(Color.clear)
+                .listRowSeparator(.hidden)
+                .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                    Button(role: .destructive) {
+                        projectPendingDeletion = project
+                    } label: {
+                        Label("Delete", systemImage: "trash")
                     }
                 }
-
-                addProjectRow
-                    .listRowInsets(EdgeInsets(top: 7, leading: 24, bottom: 20, trailing: 24))
-                    .listRowBackground(Color.clear)
-                    .listRowSeparator(.hidden)
+                .contextMenu {
+                    Button(role: .destructive) {
+                        projectPendingDeletion = project
+                    } label: {
+                        Label("Delete Project", systemImage: "trash")
+                    }
+                }
             }
-            .listStyle(.plain)
-            .scrollContentBackground(.hidden)
-            .refreshable { await model.load() }
         }
-        .padding(.top, 8)
+        .listStyle(.plain)
+        .scrollContentBackground(.hidden)
+        .refreshable { await model.load() }
     }
 
-    private var newProjectButton: some View {
+    private var mascotCanvas: some View {
+        GeometryReader { proxy in
+            let mascotSize = max(560, min(proxy.size.width * 1.02, proxy.size.height * 1.08))
+
+            ZStack {
+                NomiTheme.surface
+
+                RadialGradient(
+                    colors: [NomiTheme.blue.opacity(0.11), Color.clear],
+                    center: .center,
+                    startRadius: 40,
+                    endRadius: min(proxy.size.width, proxy.size.height) * 0.62
+                )
+
+                Image("NomiIdle")
+                    .resizable()
+                    .interpolation(.high)
+                    .scaledToFit()
+                    .frame(width: mascotSize, height: mascotSize)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
+                    .offset(x: mascotSize * 0.10, y: mascotSize * 0.075)
+                    .accessibilityHidden(true)
+            }
+            .clipped()
+        }
+    }
+
+    private var settingsButton: some View {
+        Button {
+            showingBackendSettings = true
+        } label: {
+            Image(systemName: "gearshape.fill")
+                .font(.title2.weight(.semibold))
+                .frame(width: 50, height: 50)
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(NomiTheme.ink)
+        .background(.regularMaterial, in: Circle())
+        .overlay(Circle().stroke(NomiTheme.ink.opacity(0.16), lineWidth: 1))
+        .shadow(color: NomiTheme.ink.opacity(0.08), radius: 10, y: 4)
+        .accessibilityLabel("Settings")
+    }
+
+    private func newProjectButton(compact: Bool) -> some View {
         Button {
             presentNewProject()
         } label: {
             Label("New Project", systemImage: "plus")
-                .font(.headline)
-                .padding(.horizontal, 10)
+                .font(compact ? .subheadline.weight(.semibold) : .headline)
+                .padding(.horizontal, compact ? 2 : 10)
         }
         .buttonStyle(.borderedProminent)
-        .buttonBorderShape(.roundedRectangle(radius: 14))
+        .buttonBorderShape(.roundedRectangle(radius: compact ? 11 : 14))
+        .controlSize(compact ? .small : .large)
         .tint(NomiTheme.blue)
-        .disabled(model.isCreating)
-    }
-
-    private var addProjectRow: some View {
-        Button {
-            presentNewProject()
-        } label: {
-            HStack(spacing: 16) {
-                Image(systemName: "plus")
-                    .font(.title3.weight(.semibold))
-                    .foregroundStyle(NomiTheme.blue)
-                    .frame(width: 46, height: 46)
-                    .background(NomiTheme.blue.opacity(0.08), in: RoundedRectangle(cornerRadius: 14))
-
-                VStack(alignment: .leading, spacing: 3) {
-                    Text("New Project")
-                        .font(.headline)
-                        .foregroundStyle(NomiTheme.ink)
-                    Text("Add another course, research project, or anything you're learning.")
-                        .font(.subheadline)
-                        .foregroundStyle(NomiTheme.secondaryInk)
-                }
-
-                Spacer()
-            }
-            .padding(14)
-            .frame(maxWidth: 980)
-            .background(NomiTheme.surface.opacity(0.46), in: RoundedRectangle(cornerRadius: 20))
-            .overlay {
-                RoundedRectangle(cornerRadius: 20)
-                    .stroke(
-                        NomiTheme.secondaryInk.opacity(0.28),
-                        style: StrokeStyle(lineWidth: 1, dash: [6, 5])
-                    )
-            }
-        }
-        .buttonStyle(.plain)
-        .frame(maxWidth: .infinity)
         .disabled(model.isCreating)
     }
 
@@ -374,52 +343,42 @@ private struct ProjectRow: View {
 
     var body: some View {
         Button(action: onOpen) {
-            HStack(spacing: 16) {
-                Image(systemName: "folder.fill")
-                    .font(.title3.weight(.semibold))
-                    .foregroundStyle(NomiTheme.blue)
-                    .frame(width: 48, height: 48)
-                    .background(NomiTheme.blue.opacity(0.08), in: RoundedRectangle(cornerRadius: 14))
-
-                VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 12) {
+                VStack(alignment: .leading, spacing: 4) {
                     Text(project.name)
                         .font(.headline)
                         .foregroundStyle(NomiTheme.ink)
                         .lineLimit(1)
 
-                    Group {
-                        if let sourceCount {
-                            Label(
-                                "\(sourceCount) \(sourceCount == 1 ? "source" : "sources")",
-                                systemImage: "books.vertical"
-                            )
-                        } else {
-                            Label("Sources unavailable", systemImage: "books.vertical")
-                        }
-                    }
-                    .font(.caption)
-                    .foregroundStyle(NomiTheme.secondaryInk)
+                    Text(sourceSubtitle)
+                        .font(.subheadline)
+                        .lineLimit(1)
+                        .foregroundStyle(NomiTheme.secondaryInk)
                 }
 
-                Spacer(minLength: 18)
+                Spacer(minLength: 8)
 
                 Image(systemName: "chevron.right")
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(NomiTheme.secondaryInk.opacity(0.75))
             }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 13)
-            .frame(maxWidth: 980, minHeight: 78)
-            .background(NomiTheme.surface, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+            .padding(.horizontal, 13)
+            .padding(.vertical, 10)
+            .frame(maxWidth: .infinity, minHeight: 62)
+            .background(NomiTheme.surface, in: RoundedRectangle(cornerRadius: 15, style: .continuous))
             .overlay {
-                RoundedRectangle(cornerRadius: 20, style: .continuous)
-                    .stroke(NomiTheme.hairline, lineWidth: 0.75)
+                RoundedRectangle(cornerRadius: 15, style: .continuous)
+                    .stroke(NomiTheme.hairline, lineWidth: 1)
             }
-            .shadow(color: NomiTheme.ink.opacity(0.045), radius: 12, y: 5)
+            .shadow(color: NomiTheme.ink.opacity(0.035), radius: 8, y: 3)
         }
         .buttonStyle(.plain)
-        .frame(maxWidth: .infinity)
         .accessibilityHint("Opens the project notebook")
+    }
+
+    private var sourceSubtitle: String {
+        guard let sourceCount else { return "Loading sources…" }
+        return "\(sourceCount) \(sourceCount == 1 ? "source" : "sources")"
     }
 }
 
