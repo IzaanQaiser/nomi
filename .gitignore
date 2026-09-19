@@ -1,0 +1,19 @@
+# Python / backend
+backend/.venv/
+__pycache__/
+*.pyc
+backend/*.db
+backend/:memory:
+backend/storage/
+backend/.env
+
+# macOS
+.DS_Store
+
+# Xcode / iOS
+ios/DerivedData/
+ios/build/
+ios/*.xcodeproj/xcuserdata/
+ios/*.xcodeproj/project.xcworkspace/xcuserdata/
+xcuserdata/
+*.xcuserstate

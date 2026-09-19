@@ -1,0 +1,44 @@
+name: AINotes
+options:
+  bundleIdPrefix: com.ainotes
+  deploymentTarget:
+    iOS: "17.0"
+  createIntermediateGroups: true
+
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    CODE_SIGN_STYLE: Automatic
+
+targets:
+  AINotes:
+    type: application
+    platform: iOS
+    deploymentTarget: "17.0"
+    sources:
+      - path: Sources/AINotes
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.saubaanhasan.ainotes.x7k3f9
+        DEVELOPMENT_TEAM: 85285D6R68
+        TARGETED_DEVICE_FAMILY: "2"          # iPad only
+        GENERATE_INFOPLIST_FILE: "NO"
+    info:
+      path: Sources/AINotes/Info.plist
+      properties:
+        CFBundleDisplayName: AI Notes
+        BackendBaseURL: "http://172.20.10.2:8000"
+        UILaunchScreen: {}
+        UIApplicationSceneManifest:
+          UIApplicationSupportsMultipleScenes: false
+        UISupportedInterfaceOrientations~ipad:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationPortraitUpsideDown
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+        # Simulator/local development only. Deployed backends should use HTTPS.
+        NSAppTransportSecurity:
+          NSAllowsLocalNetworking: true
+        NSLocalNetworkUsageDescription: "Connects to your local AI Notes backend during development."
+        NSMicrophoneUsageDescription: "The tutor listens when you tap the mic so you can say you're stuck or ask for a nudge."
+        NSSpeechRecognitionUsageDescription: "Speech is turned into text so the tutor can reply to what you say."
