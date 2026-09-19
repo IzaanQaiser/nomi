@@ -29,7 +29,6 @@ final class ProjectsViewModel {
             let project = try await APIClient.shared.createProject(name: name)
             projects.insert(project, at: 0)
             sourceCounts[project.id] = 0
-            markOpened(project)
             return project
         } catch {
             errorMessage = error.localizedDescription
@@ -42,26 +41,9 @@ final class ProjectsViewModel {
             try await APIClient.shared.deleteProject(id: project.id)
             projects.removeAll { $0.id == project.id }
             sourceCounts[project.id] = nil
-            UserDefaults.standard.removeObject(forKey: activityKey(project.id))
         } catch {
             errorMessage = error.localizedDescription
         }
-    }
-
-    func markOpened(_ project: Project) {
-        UserDefaults.standard.set(Date(), forKey: activityKey(project.id))
-    }
-
-    func lastOpened(_ project: Project) -> Date? {
-        UserDefaults.standard.object(forKey: activityKey(project.id)) as? Date
-    }
-
-    func activityDate(_ project: Project) -> Date {
-        lastOpened(project) ?? project.createdAt
-    }
-
-    private func activityKey(_ projectID: String) -> String {
-        "nomi.projectLastOpened.\(projectID)"
     }
 
     private func loadSourceCounts(for projects: [Project]) async {
@@ -183,10 +165,6 @@ struct ProjectsView: View {
         }
     }
 
-    private var sortedProjects: [Project] {
-        model.projects.sorted { model.activityDate($0) > model.activityDate($1) }
-    }
-
     private var homeHeader: some View {
         HStack {
             Text("NOMI")
@@ -293,13 +271,11 @@ struct ProjectsView: View {
             .padding(.horizontal, 32)
 
             List {
-                ForEach(sortedProjects) { project in
+                ForEach(model.projects) { project in
                     ProjectRow(
                         project: project,
-                        sourceCount: model.sourceCounts[project.id],
-                        lastOpened: model.lastOpened(project)
+                        sourceCount: model.sourceCounts[project.id]
                     ) {
-                        model.markOpened(project)
                         path.append(project)
                     }
                     .listRowInsets(EdgeInsets(top: 5, leading: 24, bottom: 5, trailing: 24))
@@ -394,7 +370,6 @@ struct ProjectsView: View {
 private struct ProjectRow: View {
     let project: Project
     let sourceCount: Int?
-    let lastOpened: Date?
     let onOpen: () -> Void
 
     var body: some View {
@@ -412,7 +387,7 @@ private struct ProjectRow: View {
                         .foregroundStyle(NomiTheme.ink)
                         .lineLimit(1)
 
-                    HStack(spacing: 16) {
+                    Group {
                         if let sourceCount {
                             Label(
                                 "\(sourceCount) \(sourceCount == 1 ? "source" : "sources")",
@@ -420,20 +395,6 @@ private struct ProjectRow: View {
                             )
                         } else {
                             Label("Sources unavailable", systemImage: "books.vertical")
-                        }
-
-                        if let lastOpened {
-                            Label {
-                                Text(lastOpened, style: .relative)
-                            } icon: {
-                                Image(systemName: "clock")
-                            }
-                        } else {
-                            Label {
-                                Text(project.createdAt, style: .date)
-                            } icon: {
-                                Image(systemName: "calendar")
-                            }
                         }
                     }
                     .font(.caption)
