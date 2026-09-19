@@ -11,7 +11,7 @@ struct RootView: View {
                 ProjectsView(initialProject: firstProject)
                     .transition(.opacity)
             } else {
-                FirstLaunchView { project in
+                OnboardingFlowView { project in
                     firstProject = project
                     withAnimation(.easeInOut(duration: 0.3)) {
                         hasCompletedFirstLaunch = true

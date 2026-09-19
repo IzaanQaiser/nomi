@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 from ..db import SessionLocal, get_db
 from ..models import Project, Source
 from ..schemas import SourceOut, TextSourceCreate
-from ..services.file_store import read_file, save_pdf
+from ..services.file_store import delete_files, read_file, save_pdf
 from ..services.ingest import extract_pdf_text, ingest_source
 
 router = APIRouter(prefix="/projects/{project_id}/sources", tags=["sources"])
@@ -165,3 +165,20 @@ def get_source(project_id: str, source_id: str, db: Session = Depends(get_db)) -
     if source is None or source.project_id != project_id:
         raise HTTPException(404, "Source not found")
     return source
+
+
+@router.delete("/{source_id}", status_code=204, response_model=None)
+def delete_source(project_id: str, source_id: str, db: Session = Depends(get_db)) -> None:
+    source = db.get(Source, source_id)
+    if source is None or source.project_id != project_id:
+        raise HTTPException(404, "Source not found")
+
+    # Remove private storage first so a storage failure cannot leave an object
+    # orphaned after its database row and vector chunks disappear.
+    try:
+        delete_files([source.storage_path] if source.storage_path else [])
+    except Exception as exc:
+        raise HTTPException(502, "Could not remove source file") from exc
+
+    db.delete(source)
+    db.commit()

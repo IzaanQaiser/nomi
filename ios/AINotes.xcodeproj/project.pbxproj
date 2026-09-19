@@ -13,6 +13,8 @@
 		56E9B90C5182C3AB0BD94489 /* PDFNoteStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 232BF27888FAD67E5A1CB1C5 /* PDFNoteStore.swift */; };
 		7072889C3D649B5341721BB3 /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3B7C3834AC2B3B2549409FB2 /* RootView.swift */; };
 		C0A150000000000000000001 /* FirstLaunchView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0A150000000000000000002 /* FirstLaunchView.swift */; };
+		C0A150000000000000000003 /* CourseContextView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0A150000000000000000004 /* CourseContextView.swift */; };
+		C0A150000000000000000005 /* OnboardingFlowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0A150000000000000000006 /* OnboardingFlowView.swift */; };
 		735D2799C9F0182DCEA09000 /* SourcesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 635835C96E63796AB7AAEC78 /* SourcesView.swift */; };
 		8E1A2B3C4D5E6F708192A3B4 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 7D0C1E2F3A4B5C6D7E8F9012 /* Assets.xcassets */; };
 		97AFC6CCC0F97D574169F8BF /* DTOs.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20B655AC6266D0A42ED869CB /* DTOs.swift */; };
@@ -38,6 +40,8 @@
 		3223D9B6722E3A15FE4A64A8 /* InkPagerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InkPagerView.swift; sourceTree = "<group>"; };
 		3B7C3834AC2B3B2549409FB2 /* RootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootView.swift; sourceTree = "<group>"; };
 		C0A150000000000000000002 /* FirstLaunchView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FirstLaunchView.swift; sourceTree = "<group>"; };
+		C0A150000000000000000004 /* CourseContextView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CourseContextView.swift; sourceTree = "<group>"; };
+		C0A150000000000000000006 /* OnboardingFlowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingFlowView.swift; sourceTree = "<group>"; };
 		635835C96E63796AB7AAEC78 /* SourcesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SourcesView.swift; sourceTree = "<group>"; };
 		63AF9CCC0C632A30ACEA2CA1 /* PaperStyle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PaperStyle.swift; sourceTree = "<group>"; };
 		7D0C1E2F3A4B5C6D7E8F9012 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
@@ -141,7 +145,9 @@
 			isa = PBXGroup;
 			children = (
 				E751C20F05FF2EA70BA2AE9D /* AINotesApp.swift */,
+				C0A150000000000000000004 /* CourseContextView.swift */,
 				C0A150000000000000000002 /* FirstLaunchView.swift */,
+				C0A150000000000000000006 /* OnboardingFlowView.swift */,
 				3B7C3834AC2B3B2549409FB2 /* RootView.swift */,
 			);
 			path = App;
@@ -247,7 +253,9 @@
 			buildActionMask = 2147483647;
 			files = (
 				F0C40F5E1FD66D4ECF838F5F /* AINotesApp.swift in Sources */,
+				C0A150000000000000000003 /* CourseContextView.swift in Sources */,
 				C0A150000000000000000001 /* FirstLaunchView.swift in Sources */,
+				C0A150000000000000000005 /* OnboardingFlowView.swift in Sources */,
 				D03241E026F053FF09174685 /* APIClient.swift in Sources */,
 				F240286D09069D942DFB96D0 /* AppConfig.swift in Sources */,
 				B8F35CF8163154C661E820F6 /* ChatView.swift in Sources */,

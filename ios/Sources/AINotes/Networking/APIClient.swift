@@ -53,6 +53,10 @@ actor APIClient {
         try await get("/projects")
     }
 
+    func getProject(id: String) async throws -> Project {
+        try await get("/projects/\(id)")
+    }
+
     func createProject(name: String) async throws -> Project {
         try await post("/projects", body: ["name": name])
     }
@@ -91,6 +95,12 @@ actor APIClient {
 
         let data = try await send(req, session: llmSession)
         return try decode(data)
+    }
+
+    func deleteSource(projectId: String, sourceId: String) async throws {
+        _ = try await send(
+            try request(path: "/projects/\(projectId)/sources/\(sourceId)", method: "DELETE")
+        )
     }
 
     // MARK: Notes
