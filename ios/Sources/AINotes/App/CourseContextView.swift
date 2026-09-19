@@ -508,7 +508,7 @@ private struct MaterialRow: View {
                             Image(systemName: isNotebookSource ? "checkmark.circle.fill" : "circle")
                         }
 
-                        Text(isNotebookSource ? "In notebook" : "Use in notebook")
+                        Text(isNotebookSource ? "In notebook" : "Add to first notebook")
                             .lineLimit(1)
                     }
                     .font(.caption.weight(.semibold))
