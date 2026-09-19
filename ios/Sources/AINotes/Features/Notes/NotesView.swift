@@ -32,6 +32,8 @@ struct NotesView: View {
     @State private var showPDFImporter = false
     @State private var importError: String?
     @State private var bgCache = BackgroundCache()
+    /// Custom drawing tools (replaces Apple's PKToolPicker) + undo/redo state.
+    @StateObject private var tools = NoteToolController()
     @ObservedObject var shadowing: ShadowingEngine
 
     private let project: Project
@@ -114,16 +116,34 @@ struct NotesView: View {
             background: background,
             canAddPage: mode == .paper,
             onAddPage: addPage,
-            shadowing: shadowing
+            shadowing: shadowing,
+            tools: tools
         )
         .ignoresSafeArea(edges: .bottom)
+        .overlay {
+            PenIslandView(tools: tools)
+        }
         .overlay(alignment: .topTrailing) {
             MascotView(engine: shadowing)
                 .padding(.top, 10)
                 .padding(.trailing, 14)
         }
         .toolbar {
-            ToolbarItem(placement: .topBarTrailing) { pageSettingsMenu }
+            ToolbarItemGroup(placement: .topBarTrailing) {
+                Button {
+                    tools.requestUndo()
+                } label: {
+                    Label("Undo", systemImage: "arrow.uturn.backward")
+                }
+                .disabled(!tools.canUndo)
+                Button {
+                    tools.requestRedo()
+                } label: {
+                    Label("Redo", systemImage: "arrow.uturn.forward")
+                }
+                .disabled(!tools.canRedo)
+                pageSettingsMenu
+            }
         }
         .onAppear { loadPDFIfNeeded() }
         .onChange(of: paperStyle) { _, style in

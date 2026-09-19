@@ -45,9 +45,11 @@ struct ProjectShellView: View {
 
             if showChat {
                 Divider()
-                ChatView(model: session.chat)
-                    .frame(width: 340)
-                    .frame(maxHeight: .infinity)
+                ChatView(model: session.chat) {
+                    withAnimation(.easeInOut(duration: 0.2)) { showChat = false }
+                }
+                .frame(width: 340)
+                .frame(maxHeight: .infinity)
             }
         }
         .navigationTitle(session.project.name)
@@ -63,16 +65,6 @@ struct ProjectShellView: View {
                     )
                 }
                 .accessibilityLabel(session.shadowing.isListening ? "Stop listening" : "Talk to tutor")
-            }
-            ToolbarItem(placement: .topBarTrailing) {
-                Button {
-                    withAnimation(.easeInOut(duration: 0.2)) { showChat.toggle() }
-                } label: {
-                    Label(
-                        showChat ? "Hide Assistant" : "Assistant",
-                        systemImage: showChat ? "bubble.left.and.bubble.right.fill" : "bubble.left.and.bubble.right"
-                    )
-                }
             }
             ToolbarItem(placement: .topBarTrailing) {
                 Button {

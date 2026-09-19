@@ -116,6 +116,7 @@ struct SolutionSheetState: Identifiable, Equatable {
 
 struct ChatView: View {
     @ObservedObject var model: ChatViewModel
+    var onClose: (() -> Void)? = nil
 
     var body: some View {
         VStack(spacing: 0) {
@@ -145,6 +146,15 @@ struct ChatView: View {
             Image(systemName: "sparkles")
             Text("Assistant").font(.headline)
             Spacer()
+            if let onClose {
+                Button(action: onClose) {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.title3)
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Close assistant")
+            }
         }
         .padding()
     }

@@ -1,6 +1,7 @@
 import PencilKit
 import SwiftUI
 import UIKit
+import UniformTypeIdentifiers
 
 /// GoodNotes-style notebook surface.
 ///
@@ -28,6 +29,9 @@ struct InkPagerView: UIViewControllerRepresentable {
     var onAddPage: (() -> Void)?
     /// Live tutor that watches the active page (optional).
     var shadowing: ShadowingEngine?
+    /// Drawing tools (pen/eraser/lasso/color/width) + undo/redo, driven by the
+    /// custom floating island instead of Apple's `PKToolPicker`.
+    @ObservedObject var tools: NoteToolController
 
     func makeCoordinator() -> Coordinator { Coordinator(self) }
 
@@ -48,6 +52,7 @@ struct InkPagerView: UIViewControllerRepresentable {
     func updateUIViewController(_ pager: UIPageViewController, context: Context) {
         context.coordinator.parent = self
         context.coordinator.syncIfNeeded()
+        context.coordinator.applyToolState()
     }
 
     static func dismantleUIViewController(_ pager: UIPageViewController, coordinator: Coordinator) {
@@ -66,15 +71,21 @@ struct InkPagerView: UIViewControllerRepresentable {
         private var pendingAdd = false
 
         private var drawings: [Int: Data]
+        private var pageImages: [Int: [PageImageStore.Item]]
         private var saveTask: Task<Void, Never>?
-        private let toolPicker = PKToolPicker()
-        private weak var activeCanvas: PKCanvasView?
+        private weak var activeCanvas: NotesCanvasView?
+        private weak var activePage: InkPageController?
+        private var lastUndoNonce = 0
+        private var lastRedoNonce = 0
 
         init(_ parent: InkPagerView) {
             self.parent = parent
             self.currentSignature = parent.signature
             self.currentStoreKey = parent.storeKey
             self.drawings = PDFNoteStore.loadDrawings(key: parent.storeKey)
+            self.pageImages = PageImageStore.load(key: parent.storeKey)
+            self.lastUndoNonce = parent.tools.undoNonce
+            self.lastRedoNonce = parent.tools.redoNonce
         }
 
         /// Index of the trailing "add page" placeholder, or `nil` if disabled.
@@ -95,6 +106,7 @@ struct InkPagerView: UIViewControllerRepresentable {
                 flush()
                 currentStoreKey = parent.storeKey
                 drawings = PDFNoteStore.loadDrawings(key: parent.storeKey)
+                pageImages = PageImageStore.load(key: parent.storeKey)
                 currentSignature = ""   // force a rebuild for the new note
             }
             guard currentSignature != parent.signature else { return }
@@ -157,23 +169,57 @@ struct InkPagerView: UIViewControllerRepresentable {
             }
         }
 
-        // MARK: Active canvas + tool picker
+        // MARK: Active canvas + custom tools
 
         func activate(page: InkPageController) {
             let canvas = page.canvasView
             activeCanvas = canvas
-            toolPicker.setVisible(true, forFirstResponder: canvas)
-            toolPicker.addObserver(canvas)
+            activePage = page
+            // No PKToolPicker — the custom island drives the tool. First responder
+            // is still needed so the canvas owns the undo manager.
             canvas.becomeFirstResponder()
-            // Point the tutor at whatever page is currently on screen.
+            canvas.tool = parent.tools.pkTool
+            refreshUndoState()
             parent.shadowing?.setActivePage(page.pageIndex)
             parent.shadowing?.snapshotProvider = { [weak page] maxWidth in
                 page?.snapshot(maxWidth: maxWidth)
             }
         }
 
+        /// Push the island's tool selection onto the live canvas and service any
+        /// pending undo/redo requests. Called on every SwiftUI update.
+        func applyToolState() {
+            let canvas = activeCanvas ?? activePage?.canvasView
+            canvas?.tool = parent.tools.pkTool
+
+            if parent.tools.undoNonce != lastUndoNonce {
+                lastUndoNonce = parent.tools.undoNonce
+                canvas?.undoManager?.undo()
+                refreshUndoState()
+            }
+            if parent.tools.redoNonce != lastRedoNonce {
+                lastRedoNonce = parent.tools.redoNonce
+                canvas?.undoManager?.redo()
+                refreshUndoState()
+            }
+        }
+
+        /// Mirror the canvas undo manager's state onto the island buttons.
+        func refreshUndoState() {
+            let mgr = (activeCanvas ?? activePage?.canvasView)?.undoManager
+            let canUndo = mgr?.canUndo ?? false
+            let canRedo = mgr?.canRedo ?? false
+            // Avoid "publishing during view update" by deferring the write.
+            DispatchQueue.main.async { [weak self] in
+                guard let self else { return }
+                if self.parent.tools.canUndo != canUndo { self.parent.tools.canUndo = canUndo }
+                if self.parent.tools.canRedo != canRedo { self.parent.tools.canRedo = canRedo }
+            }
+        }
+
         func drawingChanged(strokeCount: Int) {
             parent.shadowing?.noteDrawingChanged(strokeCount: strokeCount)
+            refreshUndoState()
         }
 
         // MARK: Drawing persistence
@@ -188,6 +234,17 @@ struct InkPagerView: UIViewControllerRepresentable {
             scheduleSave()
         }
 
+        func images(for index: Int) -> [PageImageStore.Item] {
+            pageImages[index] ?? []
+        }
+
+        func updateImages(_ items: [PageImageStore.Item], for index: Int) {
+            pageImages[index] = items
+            scheduleSave()
+        }
+
+        var storeKey: String { currentStoreKey }
+
         private func scheduleSave() {
             saveTask?.cancel()
             saveTask = Task { [weak self] in
@@ -199,7 +256,60 @@ struct InkPagerView: UIViewControllerRepresentable {
 
         func flush() {
             PDFNoteStore.saveDrawings(drawings, key: currentStoreKey)
+            PageImageStore.save(pageImages, key: currentStoreKey)
         }
+    }
+}
+
+// MARK: - Canvas subclass (clipboard paste for images + ink)
+
+/// Extends PencilKit so Paste can insert clipboard images, while still
+/// forwarding ink cut/copy/paste to the system lasso selection handlers.
+final class NotesCanvasView: PKCanvasView {
+    var onPasteImage: ((UIImage) -> Void)?
+    var onPasteDrawing: ((PKDrawing) -> Void)?
+
+    override func canPerformAction(_ action: Selector, withSender sender: Any?) -> Bool {
+        if action == #selector(paste(_:)) {
+            if UIPasteboard.general.hasImages { return true }
+            if Self.drawingFromPasteboard() != nil { return true }
+        }
+        return super.canPerformAction(action, withSender: sender)
+    }
+
+    override func paste(_ sender: Any?) {
+        if let image = UIPasteboard.general.image {
+            onPasteImage?(image)
+            return
+        }
+        if let drawing = Self.drawingFromPasteboard() {
+            onPasteDrawing?(drawing)
+            return
+        }
+        super.paste(sender)
+    }
+
+    static func drawingFromPasteboard() -> PKDrawing? {
+        let board = UIPasteboard.general
+        if let data = board.data(forPasteboardType: UTType.pkDrawing.identifier),
+           let drawing = try? PKDrawing(data: data) {
+            return drawing
+        }
+        // Some system copies use a private PencilKit UTI; try common fallbacks.
+        for type in board.types {
+            if type.lowercased().contains("pencilkit") || type.lowercased().contains("drawing"),
+               let data = board.data(forPasteboardType: type),
+               let drawing = try? PKDrawing(data: data) {
+                return drawing
+            }
+        }
+        return nil
+    }
+}
+
+private extension UTType {
+    static var pkDrawing: UTType {
+        UTType(exportedAs: "com.apple.pencilkit.drawing")
     }
 }
 
@@ -207,18 +317,33 @@ struct InkPagerView: UIViewControllerRepresentable {
 
 /// A single notebook page: a `PKCanvasView` that owns its zoom, with a
 /// high-resolution background image placed inside its zooming content view.
-final class InkPageController: UIViewController, PKCanvasViewDelegate, UIScrollViewDelegate {
+final class InkPageController: UIViewController, PKCanvasViewDelegate, UIScrollViewDelegate, UIGestureRecognizerDelegate, UIEditMenuInteractionDelegate {
     let pageIndex: Int
     private let canonicalSize: CGSize
     private let background: UIImage?
     private weak var coordinator: InkPagerView.Coordinator?
 
-    let canvasView = PKCanvasView()
+    let canvasView = NotesCanvasView()
     private let backgroundView = UIImageView()
+    /// Holds pasted photos *below* the ink, so pencil strokes draw on top of them.
+    private let imageLayer = UIView()
+    /// Draws selection chrome (border + delete badge) *above* the ink; non-interactive.
+    private let selectionLayer = SelectionOverlayView()
+    private var imageViews: [String: UIImageView] = [:]
+    private var selectedID: String?
     private var didConfigureZoom = false
     private var didAttachBackground = false
     private var lastStrokeCount = 0
     private var isMutatingDrawing = false   // guard against re-entrant drawing edits
+
+    /// Smallest a photo can be pinched down to (canonical points).
+    private let minImageSide: CGFloat = 60
+    /// Tap target (canonical points) for the corner delete badge.
+    private let deleteBadgeSide: CGFloat = 56
+
+    // Live gesture state while dragging / resizing a photo with a finger.
+    private var activeImageID: String?
+    private var gestureStartFrame: CGRect = .zero
 
     init(pageIndex: Int,
          canonicalSize: CGSize,
@@ -240,7 +365,7 @@ final class InkPageController: UIViewController, PKCanvasViewDelegate, UIScrollV
 
         canvasView.frame = view.bounds
         canvasView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
-        canvasView.drawingPolicy = .pencilOnly     // pencil draws; finger scrolls/zooms
+        canvasView.drawingPolicy = .pencilOnly     // pencil draws; finger scrolls/zooms / drags images
         canvasView.backgroundColor = .clear
         canvasView.isOpaque = false
         canvasView.bounces = false                  // don't rubber-band at fit, so swipes can page
@@ -248,6 +373,12 @@ final class InkPageController: UIViewController, PKCanvasViewDelegate, UIScrollV
         canvasView.showsHorizontalScrollIndicator = false
         canvasView.contentSize = canonicalSize
         canvasView.delegate = self
+        canvasView.onPasteImage = { [weak self] image in
+            self?.insertPastedImage(image)
+        }
+        canvasView.onPasteDrawing = { [weak self] drawing in
+            self?.insertPastedDrawing(drawing)
+        }
         view.addSubview(canvasView)
 
         backgroundView.frame = CGRect(origin: .zero, size: canonicalSize)
@@ -256,10 +387,74 @@ final class InkPageController: UIViewController, PKCanvasViewDelegate, UIScrollV
         backgroundView.layer.borderColor = UIColor.separator.cgColor
         backgroundView.layer.borderWidth = 0.5
 
+        imageLayer.frame = CGRect(origin: .zero, size: canonicalSize)
+        imageLayer.isUserInteractionEnabled = false   // finger gestures live on the canvas
+        imageLayer.clipsToBounds = false
+
+        selectionLayer.frame = CGRect(origin: .zero, size: canonicalSize)
+        selectionLayer.isUserInteractionEnabled = false
+        selectionLayer.backgroundColor = .clear
+
         if let drawing = coordinator?.drawing(for: pageIndex) {
             canvasView.drawing = drawing
         }
         lastStrokeCount = canvasView.drawing.strokes.count
+
+        installImageGestures()
+    }
+
+    /// Finger-only recognizers that select / drag / resize / delete pasted photos.
+    /// They hit-test photo frames manually; because the canvas is `.pencilOnly`,
+    /// the pencil never triggers them and always draws instead.
+    private func installImageGestures() {
+        let finger = [NSNumber(value: UITouch.TouchType.direct.rawValue)]
+
+        let pan = UIPanGestureRecognizer(target: self, action: #selector(handleImagePan(_:)))
+        pan.allowedTouchTypes = finger
+        pan.maximumNumberOfTouches = 1
+        pan.delegate = self
+        canvasView.addGestureRecognizer(pan)
+        // Let the photo drag win over page scrolling when it starts on a photo.
+        canvasView.panGestureRecognizer.require(toFail: pan)
+
+        let pinch = UIPinchGestureRecognizer(target: self, action: #selector(handleImagePinch(_:)))
+        pinch.allowedTouchTypes = finger
+        pinch.delegate = self
+        canvasView.addGestureRecognizer(pinch)
+        canvasView.pinchGestureRecognizer?.require(toFail: pinch)
+
+        let tap = UITapGestureRecognizer(target: self, action: #selector(handleImageTap(_:)))
+        tap.allowedTouchTypes = finger
+        tap.delegate = self
+        canvasView.addGestureRecognizer(tap)
+
+        // Press-and-hold anywhere to paste a clipboard photo/ink at that spot,
+        // native-style (an edit menu with a Paste action).
+        canvasView.addInteraction(editMenuInteraction)
+        let longPress = UILongPressGestureRecognizer(target: self, action: #selector(handleLongPress(_:)))
+        longPress.allowedTouchTypes = finger
+        longPress.delegate = self
+        canvasView.addGestureRecognizer(longPress)
+    }
+
+    private lazy var editMenuInteraction = UIEditMenuInteraction(delegate: self)
+    /// Content-space point where the next paste should land.
+    private var pasteLocation: CGPoint = .zero
+
+    @objc private func handleLongPress(_ g: UILongPressGestureRecognizer) {
+        guard g.state == .began, let content = contentView else { return }
+        guard UIPasteboard.general.hasImages || NotesCanvasView.drawingFromPasteboard() != nil else { return }
+        pasteLocation = g.location(in: content)
+        let config = UIEditMenuConfiguration(identifier: nil, sourcePoint: g.location(in: canvasView))
+        editMenuInteraction.presentEditMenu(with: config)
+    }
+
+    private func pasteAtPasteLocation() {
+        if let image = UIPasteboard.general.image {
+            insertPastedImage(image, at: pasteLocation)
+        } else if let drawing = NotesCanvasView.drawingFromPasteboard() {
+            insertPastedDrawing(drawing, at: pasteLocation)
+        }
     }
 
     override func viewDidLayoutSubviews() {
@@ -271,10 +466,43 @@ final class InkPageController: UIViewController, PKCanvasViewDelegate, UIScrollV
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
         coordinator?.activate(page: self)
+        reloadOverlays()
     }
 
-    /// Renders this page (background + ink) to a bitmap no wider than `maxWidth`
-    /// points, for the shadowing tutor to analyze.
+    override var canBecomeFirstResponder: Bool { false }
+
+    override func canPerformAction(_ action: Selector, withSender sender: Any?) -> Bool {
+        // Edit actions are handled by the canvas / overlay callbacks.
+        return false
+    }
+
+    override func paste(_ sender: Any?) {
+        pasteFromClipboard()
+    }
+
+    override func copy(_ sender: Any?) {
+        // no-op — canvas is the edit target
+    }
+
+    override func delete(_ sender: Any?) {
+        // no-op
+    }
+
+    func pasteFromClipboard() {
+        if let image = UIPasteboard.general.image {
+            insertPastedImage(image)
+            return
+        }
+        if let drawing = NotesCanvasView.drawingFromPasteboard() {
+            insertPastedDrawing(drawing)
+            return
+        }
+        // Fall back to PencilKit's paste (lasso-copied strokes).
+        canvasView.paste(nil)
+    }
+
+    /// Renders this page (background + pasted images + ink) to a bitmap no wider
+    /// than `maxWidth` points, for the shadowing tutor to analyze.
     func snapshot(maxWidth: CGFloat) -> UIImage? {
         guard canonicalSize.width > 0, canonicalSize.height > 0 else { return nil }
         let scale = max(0.1, maxWidth / canonicalSize.width)
@@ -289,6 +517,12 @@ final class InkPageController: UIViewController, PKCanvasViewDelegate, UIScrollV
                 UIColor.white.setFill()
                 ctx.fill(CGRect(origin: .zero, size: size))
             }
+            for item in currentItems() {
+                if let key = coordinator?.storeKey,
+                   let img = PageImageStore.loadImage(key: key, fileName: item.fileName) {
+                    img.draw(in: item.frame)
+                }
+            }
             let ink = canvasView.drawing.image(from: CGRect(origin: .zero, size: size), scale: scale)
             ink.draw(in: CGRect(origin: .zero, size: size))
         }
@@ -299,7 +533,12 @@ final class InkPageController: UIViewController, PKCanvasViewDelegate, UIScrollV
     private func attachBackgroundIfNeeded() {
         guard !didAttachBackground, let content = canvasView.subviews.first else { return }
         content.insertSubview(backgroundView, at: 0)
+        // Photos sit just above the paper but below the ink, so the pencil writes
+        // over them. Selection chrome sits on top of everything.
+        content.insertSubview(imageLayer, aboveSubview: backgroundView)
+        content.addSubview(selectionLayer)
         didAttachBackground = true
+        reloadOverlays()
     }
 
     private func configureZoomIfNeeded() {
@@ -326,14 +565,269 @@ final class InkPageController: UIViewController, PKCanvasViewDelegate, UIScrollV
         canvasView.contentInset = UIEdgeInsets(top: y, left: x, bottom: y, right: x)
     }
 
+    // MARK: Pasted images
+
+    private func currentItems() -> [PageImageStore.Item] {
+        coordinator?.images(for: pageIndex) ?? []
+    }
+
+    private func persistItems(_ items: [PageImageStore.Item]) {
+        coordinator?.updateImages(items, for: pageIndex)
+    }
+
+    /// Content coordinate space (canonical points) that photo frames live in.
+    private var contentView: UIView? { canvasView.subviews.first }
+
+    private func reloadOverlays() {
+        guard didAttachBackground else { return }
+        let items = currentItems()
+        let keep = Set(items.map(\.id))
+        for (id, view) in imageViews where !keep.contains(id) {
+            view.removeFromSuperview()
+            imageViews.removeValue(forKey: id)
+        }
+        guard let key = coordinator?.storeKey else { return }
+        // Rebuild in array order so later paste = higher photo (matches hit-testing).
+        for item in items {
+            let view: UIImageView
+            if let existing = imageViews[item.id] {
+                view = existing
+            } else {
+                view = UIImageView(image: PageImageStore.loadImage(key: key, fileName: item.fileName))
+                view.contentMode = .scaleAspectFill
+                view.clipsToBounds = true
+                view.isUserInteractionEnabled = false
+                view.layer.cornerRadius = 4
+                imageViews[item.id] = view
+            }
+            imageLayer.addSubview(view)   // re-add to enforce z-order
+            view.frame = item.frame
+        }
+        if let selectedID, !keep.contains(selectedID) { self.selectedID = nil }
+        updateSelectionChrome()
+    }
+
+    private func updateSelectionChrome() {
+        if let id = selectedID, let item = currentItems().first(where: { $0.id == id }) {
+            selectionLayer.selection = item.frame
+            selectionLayer.deleteBadge = deleteBadgeRect(for: item.frame)
+        } else {
+            selectionLayer.selection = nil
+            selectionLayer.deleteBadge = nil
+        }
+    }
+
+    /// Circular delete target hugging the photo's top-left corner (canonical points).
+    private func deleteBadgeRect(for frame: CGRect) -> CGRect {
+        let d = deleteBadgeSide
+        return CGRect(x: frame.minX - d / 2, y: frame.minY - d / 2, width: d, height: d)
+    }
+
+    /// Insert a photo centered on `center` (content coords), or the page center
+    /// when `center` is nil. Clamped to stay on the page.
+    private func insertPastedImage(_ image: UIImage, at center: CGPoint? = nil) {
+        guard let key = coordinator?.storeKey else { return }
+        let id = UUID().uuidString
+        let fileName = "\(id).png"
+        let maxSide: CGFloat = min(canonicalSize.width, canonicalSize.height) * 0.45
+        let aspect = image.size.width / max(image.size.height, 1)
+        var size = CGSize(width: maxSide, height: maxSide / max(aspect, 0.01))
+        if size.height > maxSide {
+            size = CGSize(width: maxSide * aspect, height: maxSide)
+        }
+        let c = center ?? CGPoint(x: canonicalSize.width / 2, y: canonicalSize.height / 2)
+        var origin = CGPoint(x: c.x - size.width / 2, y: c.y - size.height / 2)
+        origin.x = max(0, min(origin.x, canonicalSize.width - size.width))
+        origin.y = max(0, min(origin.y, canonicalSize.height - size.height))
+        PageImageStore.saveImage(image, key: key, fileName: fileName)
+        var items = currentItems()
+        items.append(PageImageStore.Item(
+            id: id, x: origin.x, y: origin.y,
+            width: size.width, height: size.height, fileName: fileName
+        ))
+        persistItems(items)
+        selectedID = id
+        reloadOverlays()
+        // Keep PencilKit as first responder so writing / undo keep working.
+        canvasView.becomeFirstResponder()
+    }
+
+    private func insertPastedDrawing(_ drawing: PKDrawing, at point: CGPoint? = nil) {
+        // Center the pasted ink on `point` (or offset it slightly otherwise).
+        let transform: CGAffineTransform
+        if let point {
+            let b = drawing.bounds
+            transform = CGAffineTransform(translationX: point.x - b.midX, y: point.y - b.midY)
+        } else {
+            transform = CGAffineTransform(translationX: 36, y: 36)
+        }
+        let shiftedStrokes = drawing.strokes.map { stroke in
+            PKStroke(
+                ink: stroke.ink,
+                path: stroke.path,
+                transform: stroke.transform.concatenating(transform),
+                mask: stroke.mask
+            )
+        }
+        isMutatingDrawing = true
+        canvasView.drawing = PKDrawing(strokes: canvasView.drawing.strokes + shiftedStrokes)
+        isMutatingDrawing = false
+        lastStrokeCount = canvasView.drawing.strokes.count
+        persistAndNotify(canvasView.drawing)
+    }
+
+    // MARK: UIEditMenuInteractionDelegate (press-and-hold paste)
+
+    func editMenuInteraction(_ interaction: UIEditMenuInteraction,
+                             menuFor configuration: UIEditMenuConfiguration,
+                             suggestedActions: [UIMenuElement]) -> UIMenu? {
+        guard UIPasteboard.general.hasImages || NotesCanvasView.drawingFromPasteboard() != nil else {
+            return nil
+        }
+        let paste = UIAction(title: "Paste", image: UIImage(systemName: "doc.on.clipboard")) { [weak self] _ in
+            self?.pasteAtPasteLocation()
+        }
+        return UIMenu(children: [paste])
+    }
+
+    private func selectOverlay(id: String?) {
+        selectedID = id
+        updateSelectionChrome()
+    }
+
+    private func deselectOverlays() {
+        guard selectedID != nil else { return }
+        selectedID = nil
+        updateSelectionChrome()
+    }
+
+    /// Topmost photo (last in array wins) whose frame contains `point`, or nil.
+    private func topImageID(at point: CGPoint) -> String? {
+        for item in currentItems().reversed() where item.frame.contains(point) {
+            return item.id
+        }
+        return nil
+    }
+
+    private func frame(of id: String) -> CGRect? {
+        currentItems().first(where: { $0.id == id })?.frame
+    }
+
+    /// Move `id`'s frame, clamped to stay on the page. Updates the live view and
+    /// selection chrome; persists only when `persist` is true (drag end).
+    private func setFrame(_ frame: CGRect, for id: String, persist: Bool) {
+        var items = currentItems()
+        guard let idx = items.firstIndex(where: { $0.id == id }) else { return }
+        var clamped = frame
+        clamped.size.width = min(clamped.size.width, canonicalSize.width)
+        clamped.size.height = min(clamped.size.height, canonicalSize.height)
+        clamped.origin.x = max(0, min(clamped.origin.x, canonicalSize.width - clamped.width))
+        clamped.origin.y = max(0, min(clamped.origin.y, canonicalSize.height - clamped.height))
+        items[idx].frame = clamped
+        imageViews[id]?.frame = clamped
+        if selectedID == id {
+            selectionLayer.selection = clamped
+            selectionLayer.deleteBadge = deleteBadgeRect(for: clamped)
+        }
+        if persist { persistItems(items) }
+    }
+
+    private func removeOverlay(id: String) {
+        guard let key = coordinator?.storeKey else { return }
+        var items = currentItems()
+        if let item = items.first(where: { $0.id == id }) {
+            PageImageStore.deleteImage(key: key, fileName: item.fileName)
+        }
+        items.removeAll { $0.id == id }
+        persistItems(items)
+        selectedID = nil
+        reloadOverlays()
+    }
+
+    // MARK: Finger gestures on photos
+
+    @objc private func handleImageTap(_ g: UITapGestureRecognizer) {
+        guard let content = contentView else { return }
+        let p = g.location(in: content)
+        // Tapping the delete badge of the selected photo removes it.
+        if let id = selectedID, let f = frame(of: id), deleteBadgeRect(for: f).contains(p) {
+            removeOverlay(id: id)
+            return
+        }
+        selectOverlay(id: topImageID(at: p))
+    }
+
+    @objc private func handleImagePan(_ g: UIPanGestureRecognizer) {
+        guard let content = contentView else { return }
+        switch g.state {
+        case .began:
+            let start = g.location(in: content)
+            // Undo the just-applied translation to recover the touch-down point.
+            let t0 = g.translation(in: content)
+            let down = CGPoint(x: start.x - t0.x, y: start.y - t0.y)
+            guard let id = topImageID(at: down), let f = frame(of: id) else {
+                activeImageID = nil
+                return
+            }
+            activeImageID = id
+            gestureStartFrame = f
+            selectOverlay(id: id)
+        case .changed:
+            guard let id = activeImageID else { return }
+            let t = g.translation(in: content)
+            let next = gestureStartFrame.offsetBy(dx: t.x, dy: t.y)
+            setFrame(next, for: id, persist: false)
+        case .ended, .cancelled:
+            if let id = activeImageID { setFrame(frame(of: id) ?? gestureStartFrame, for: id, persist: true) }
+            activeImageID = nil
+        default:
+            break
+        }
+    }
+
+    @objc private func handleImagePinch(_ g: UIPinchGestureRecognizer) {
+        guard let content = contentView else { return }
+        switch g.state {
+        case .began:
+            let center = g.location(in: content)
+            let id = (selectedID.flatMap { frame(of: $0)?.contains(center) == true ? selectedID : nil })
+                ?? topImageID(at: center)
+            guard let id, let f = frame(of: id) else {
+                activeImageID = nil
+                return
+            }
+            activeImageID = id
+            gestureStartFrame = f
+            selectOverlay(id: id)
+        case .changed:
+            guard let id = activeImageID else { return }
+            let scale = g.scale
+            let minScale = minImageSide / min(gestureStartFrame.width, gestureStartFrame.height)
+            let s = max(scale, minScale)
+            let newW = gestureStartFrame.width * s
+            let newH = gestureStartFrame.height * s
+            let center = CGPoint(x: gestureStartFrame.midX, y: gestureStartFrame.midY)
+            let next = CGRect(x: center.x - newW / 2, y: center.y - newH / 2, width: newW, height: newH)
+            setFrame(next, for: id, persist: false)
+        case .ended, .cancelled:
+            if let id = activeImageID { setFrame(frame(of: id) ?? gestureStartFrame, for: id, persist: true) }
+            activeImageID = nil
+        default:
+            break
+        }
+    }
+
     // MARK: PKCanvasViewDelegate
 
     func canvasViewDrawingDidChange(_ canvasView: PKCanvasView) {
         if isMutatingDrawing { return }
+        // Any fresh pen input means the user has moved on from a selected image.
+        deselectOverlays()
         let strokes = canvasView.drawing.strokes
 
-        // A single newly-committed stroke may be a "scribble to erase" gesture.
-        if strokes.count == lastStrokeCount + 1,
+        // Scribble-to-erase only while an inking tool is active (not lasso/eraser).
+        if canvasView.tool is PKInkingTool,
+           strokes.count == lastStrokeCount + 1,
            let erased = ScribbleEraser.apply(to: canvasView.drawing, newStrokeIndex: strokes.count - 1) {
             isMutatingDrawing = true
             canvasView.drawing = erased
@@ -356,6 +850,51 @@ final class InkPageController: UIViewController, PKCanvasViewDelegate, UIScrollV
 
     func scrollViewDidZoom(_ scrollView: UIScrollView) {
         centerContent()
+    }
+
+    // Don't steal pencil drawing / lasso gestures.
+    func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer,
+                           shouldRecognizeSimultaneouslyWith other: UIGestureRecognizer) -> Bool {
+        true
+    }
+
+    /// Our photo pan/pinch begin only when the finger is on a photo; otherwise
+    /// they fail so the canvas scrolls/zooms normally. Tap always begins (an
+    /// empty-space tap deselects).
+    func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
+        guard gestureRecognizer.delegate === self else { return true }
+        if gestureRecognizer is UITapGestureRecognizer { return true }
+        guard let content = contentView else { return false }
+        return topImageID(at: gestureRecognizer.location(in: content)) != nil
+    }
+}
+
+// MARK: - Selection chrome
+
+/// Non-interactive overlay that outlines the selected photo and draws a delete
+/// badge. Sits above the ink; taps are handled by the page's tap recognizer.
+final class SelectionOverlayView: UIView {
+    var selection: CGRect? { didSet { setNeedsDisplay() } }
+    var deleteBadge: CGRect? { didSet { setNeedsDisplay() } }
+
+    override func draw(_ rect: CGRect) {
+        guard let ctx = UIGraphicsGetCurrentContext(), let sel = selection else { return }
+        ctx.setStrokeColor(UIColor.systemBlue.cgColor)
+        ctx.setLineWidth(2)
+        ctx.stroke(sel)
+
+        guard let badge = deleteBadge else { return }
+        ctx.setFillColor(UIColor.systemRed.cgColor)
+        ctx.fillEllipse(in: badge)
+        ctx.setStrokeColor(UIColor.white.cgColor)
+        ctx.setLineWidth(max(3, badge.width * 0.09))
+        ctx.setLineCap(.round)
+        let inset = badge.insetBy(dx: badge.width * 0.3, dy: badge.height * 0.3)
+        ctx.move(to: CGPoint(x: inset.minX, y: inset.minY))
+        ctx.addLine(to: CGPoint(x: inset.maxX, y: inset.maxY))
+        ctx.move(to: CGPoint(x: inset.maxX, y: inset.minY))
+        ctx.addLine(to: CGPoint(x: inset.minX, y: inset.maxY))
+        ctx.strokePath()
     }
 }
 
