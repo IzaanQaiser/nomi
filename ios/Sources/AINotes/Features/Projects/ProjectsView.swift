@@ -40,14 +40,19 @@ final class ProjectsViewModel {
 
 struct ProjectsView: View {
     @State private var model = ProjectsViewModel()
+    @State private var path: [Project]
     @State private var showingNew = false
     @State private var showingBackendSettings = false
     @State private var newName = ""
 
     private let columns = [GridItem(.adaptive(minimum: 220), spacing: 20)]
 
+    init(initialProject: Project? = nil) {
+        _path = State(initialValue: initialProject.map { [$0] } ?? [])
+    }
+
     var body: some View {
-        NavigationStack {
+        NavigationStack(path: $path) {
             Group {
                 if model.projects.isEmpty && !model.isLoading {
                     emptyState

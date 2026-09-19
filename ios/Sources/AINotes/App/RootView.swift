@@ -1,9 +1,25 @@
 import SwiftUI
 
-/// Entry screen: the NotebookLM-style list of projects.
+/// Coordinates the first-run experience and the persistent notebook library.
 struct RootView: View {
+    @AppStorage("nomi.hasCompletedFirstLaunch") private var hasCompletedFirstLaunch = false
+    @State private var firstProject: Project?
+
     var body: some View {
-        ProjectsView()
+        Group {
+            if hasCompletedFirstLaunch {
+                ProjectsView(initialProject: firstProject)
+                    .transition(.opacity)
+            } else {
+                FirstLaunchView { project in
+                    firstProject = project
+                    withAnimation(.easeInOut(duration: 0.3)) {
+                        hasCompletedFirstLaunch = true
+                    }
+                }
+                .transition(.opacity)
+            }
+        }
     }
 }
 
