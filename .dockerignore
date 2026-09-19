@@ -1,0 +1,10 @@
+.git
+.gitignore
+ios
+supabase
+backend/.env
+backend/.venv
+backend/__pycache__
+backend/.pytest_cache
+backend/storage
+backend/*.db
