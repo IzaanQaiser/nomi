@@ -829,7 +829,9 @@ private struct ProjectSettingsMenu: View {
                 Section {
                     Button(role: .destructive, action: onDelete) {
                         Label("Delete Project", systemImage: "trash")
+                            .foregroundStyle(.red)
                     }
+                    .tint(.red)
                 }
             }
             .listStyle(.insetGrouped)
