@@ -19,21 +19,34 @@ struct OnboardingFlowView: View {
                     draftProjectID = ""
                     onCompleted(project)
                 }
+                .transition(stepTransition)
             } else if isRestoring {
                 ProgressView("Getting your course ready…")
                     .tint(NomiTheme.blue)
                     .foregroundStyle(NomiTheme.secondaryInk)
+                    .transition(.opacity)
             } else if let restorationError {
                 restoreFailure(message: restorationError)
+                    .transition(.opacity)
             } else {
                 FirstLaunchView { createdProject in
                     draftProjectID = createdProject.id
-                    project = createdProject
+                    withAnimation(.easeInOut(duration: 0.32)) {
+                        project = createdProject
+                    }
                 }
+                .transition(stepTransition)
             }
         }
         .background(NomiTheme.paper.ignoresSafeArea())
         .task { await restoreDraftIfNeeded() }
+    }
+
+    private var stepTransition: AnyTransition {
+        .asymmetric(
+            insertion: .opacity.combined(with: .move(edge: .trailing)),
+            removal: .opacity
+        )
     }
 
     private func restoreFailure(message: String) -> some View {

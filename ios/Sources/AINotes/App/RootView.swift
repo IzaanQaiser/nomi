@@ -9,11 +9,15 @@ struct RootView: View {
         Group {
             if hasCompletedFirstLaunch {
                 ProjectsView(initialProject: firstProject)
+                    .transition(.opacity)
             } else {
                 OnboardingFlowView { project in
                     firstProject = project
-                    hasCompletedFirstLaunch = true
+                    withAnimation(.easeInOut(duration: 0.3)) {
+                        hasCompletedFirstLaunch = true
+                    }
                 }
+                .transition(.opacity)
             }
         }
     }

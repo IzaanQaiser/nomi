@@ -24,19 +24,12 @@ struct FirstLaunchView: View {
 
     let onProjectCreated: (Project) -> Void
 
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @FocusState private var isCourseFieldFocused: Bool
-    @State private var courseName = ""
     @State private var phase: Phase = .editing
     @State private var errorMessage: String?
     @State private var showExplanation = false
-
-    private var normalizedCourseName: String {
-        courseName.trimmingCharacters(in: .whitespacesAndNewlines)
-    }
-
-    private var canContinue: Bool {
-        !normalizedCourseName.isEmpty && phase == .editing
-    }
+    @State private var hasAppeared = false
 
     var body: some View {
         GeometryReader { proxy in
@@ -47,14 +40,27 @@ struct FirstLaunchView: View {
 
                 VStack(spacing: usesKeyboardLayout ? 14 : 34) {
                     hero(compact: usesKeyboardLayout)
-                    courseEntry(compact: usesKeyboardLayout)
+                    CourseEntryView(
+                        compact: usesKeyboardLayout,
+                        phase: phase,
+                        errorMessage: $errorMessage,
+                        isFocused: $isCourseFieldFocused,
+                        onContinue: continueTapped,
+                        onShowExplanation: { showExplanation = true }
+                    )
                 }
                 .frame(maxWidth: 620)
                 .padding(.horizontal, 36)
+                .opacity(hasAppeared ? 1 : 0)
+                .offset(y: hasAppeared ? 0 : 10)
 
                 Spacer(minLength: usesKeyboardLayout ? 8 : 48)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .animation(
+                reduceMotion ? nil : .easeInOut(duration: 0.24),
+                value: usesKeyboardLayout
+            )
         }
         .background {
             NomiTheme.paper
@@ -66,6 +72,16 @@ struct FirstLaunchView: View {
             HowNomiWorksView()
                 .presentationDetents([.medium])
                 .presentationDragIndicator(.visible)
+        }
+        .onAppear {
+            guard !hasAppeared else { return }
+            if reduceMotion {
+                hasAppeared = true
+            } else {
+                withAnimation(.easeOut(duration: 0.45)) {
+                    hasAppeared = true
+                }
+            }
         }
     }
 
@@ -85,10 +101,14 @@ struct FirstLaunchView: View {
 
                 Image(mascotAsset)
                     .resizable()
+                    .interpolation(.high)
                     .scaledToFit()
                     .frame(width: compact ? 52 : 84, height: compact ? 52 : 84)
+                    .id(mascotAsset)
+                    .transition(.opacity)
             }
             .frame(width: compact ? 110 : 190, height: compact ? 62 : 132)
+            .animation(.easeInOut(duration: 0.22), value: mascotAsset)
             .accessibilityHidden(true)
 
             Text("I learn how you learn.\nI help when you need it.")
@@ -101,7 +121,65 @@ struct FirstLaunchView: View {
         }
     }
 
-    private func courseEntry(compact: Bool) -> some View {
+    private var mascotAsset: String {
+        switch phase {
+        case .editing: "NomiIdle"
+        case .creating: "NomiThinking"
+        case .ready: "NomiConfirm"
+        }
+    }
+
+    private func continueTapped(name: String) {
+        isCourseFieldFocused = false
+        errorMessage = nil
+        phase = .creating
+
+        Task { @MainActor in
+            async let minimumThinkingTime: Void = Task.sleep(for: .seconds(1.75))
+
+            let result: Result<Project, Error>
+            do {
+                result = .success(try await APIClient.shared.createProject(name: name))
+            } catch {
+                result = .failure(error)
+            }
+
+            _ = try? await minimumThinkingTime
+
+            switch result {
+            case let .success(project):
+                phase = .ready
+                try? await Task.sleep(for: .milliseconds(750))
+                onProjectCreated(project)
+            case let .failure(error):
+                phase = .editing
+                errorMessage = error.localizedDescription
+            }
+        }
+    }
+}
+
+/// Owns the rapidly changing text state so typing does not invalidate the
+/// mascot, glow, and full-screen onboarding layout on every keystroke.
+private struct CourseEntryView: View {
+    let compact: Bool
+    let phase: FirstLaunchView.Phase
+    @Binding var errorMessage: String?
+    @FocusState.Binding var isFocused: Bool
+    let onContinue: (String) -> Void
+    let onShowExplanation: () -> Void
+
+    @State private var courseName = ""
+
+    private var normalizedCourseName: String {
+        courseName.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private var canContinue: Bool {
+        !normalizedCourseName.isEmpty && phase == .editing
+    }
+
+    var body: some View {
         VStack(spacing: compact ? 8 : 13) {
             Text("What are you working on?")
                 .font(.system(size: compact ? 15 : 17, weight: .semibold))
@@ -114,7 +192,7 @@ struct FirstLaunchView: View {
                     .textInputAutocapitalization(.words)
                     .autocorrectionDisabled(false)
                     .submitLabel(.continue)
-                    .focused($isCourseFieldFocused)
+                    .focused($isFocused)
                     .disabled(phase != .editing)
                     .onSubmit(continueTapped)
                     .onChange(of: courseName) { _, value in
@@ -143,6 +221,8 @@ struct FirstLaunchView: View {
                 }
                 .buttonStyle(.plain)
                 .disabled(!canContinue)
+                .animation(.easeInOut(duration: 0.18), value: canContinue)
+                .animation(.easeInOut(duration: 0.18), value: phase)
                 .accessibilityLabel("Continue with this course")
             }
             .padding(.leading, 18)
@@ -151,9 +231,11 @@ struct FirstLaunchView: View {
             .background(NomiTheme.surface, in: RoundedRectangle(cornerRadius: 17, style: .continuous))
             .overlay {
                 RoundedRectangle(cornerRadius: 17, style: .continuous)
-                    .stroke(fieldBorderColor, lineWidth: isCourseFieldFocused ? 1.5 : 1)
+                    .stroke(fieldBorderColor, lineWidth: isFocused ? 1.5 : 1)
             }
             .shadow(color: NomiTheme.ink.opacity(0.07), radius: 14, y: 6)
+            .animation(.easeInOut(duration: 0.18), value: isFocused)
+            .animation(.easeInOut(duration: 0.18), value: canContinue)
 
             if let errorMessage {
                 Label(errorMessage, systemImage: "exclamationmark.circle.fill")
@@ -168,9 +250,7 @@ struct FirstLaunchView: View {
                     .foregroundStyle(phase == .ready ? Color.green : NomiTheme.secondaryInk)
                     .transition(.opacity)
             } else if !compact {
-                Button {
-                    showExplanation = true
-                } label: {
+                Button(action: onShowExplanation) {
                     Label("How Nomi works", systemImage: "info.circle")
                         .font(.footnote)
                         .foregroundStyle(NomiTheme.secondaryInk)
@@ -178,14 +258,8 @@ struct FirstLaunchView: View {
                 .buttonStyle(.plain)
             }
         }
-    }
-
-    private var mascotAsset: String {
-        switch phase {
-        case .editing: "NomiIdle"
-        case .creating: "NomiThinking"
-        case .ready: "NomiConfirm"
-        }
+        .animation(.easeInOut(duration: 0.2), value: errorMessage)
+        .animation(.easeInOut(duration: 0.2), value: phase)
     }
 
     private var buttonColor: Color {
@@ -198,7 +272,7 @@ struct FirstLaunchView: View {
 
     private var fieldBorderColor: Color {
         if errorMessage != nil { return .orange.opacity(0.8) }
-        if isCourseFieldFocused || canContinue { return NomiTheme.blue.opacity(0.72) }
+        if isFocused || canContinue { return NomiTheme.blue.opacity(0.72) }
         return NomiTheme.hairline
     }
 
@@ -212,34 +286,7 @@ struct FirstLaunchView: View {
 
     private func continueTapped() {
         guard canContinue else { return }
-
-        let name = normalizedCourseName
-        isCourseFieldFocused = false
-        errorMessage = nil
-        phase = .creating
-
-        Task { @MainActor in
-            async let minimumThinkingTime: Void = Task.sleep(for: .seconds(1.75))
-
-            let result: Result<Project, Error>
-            do {
-                result = .success(try await APIClient.shared.createProject(name: name))
-            } catch {
-                result = .failure(error)
-            }
-
-            _ = try? await minimumThinkingTime
-
-            switch result {
-            case let .success(project):
-                phase = .ready
-                try? await Task.sleep(for: .milliseconds(750))
-                onProjectCreated(project)
-            case let .failure(error):
-                phase = .editing
-                errorMessage = error.localizedDescription
-            }
-        }
+        onContinue(normalizedCourseName)
     }
 }
 
