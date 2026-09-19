@@ -347,11 +347,17 @@ private struct NotebookGlassIsland: ViewModifier {
     func body(content: Content) -> some View {
         if #available(iOS 26.0, *) {
             content
-                .glassEffect(.regular, in: shape)
+                .glassEffect(.regular.tint(Color.black.opacity(0.62)), in: shape)
                 .shadow(color: .black.opacity(0.18), radius: 14, y: 5)
         } else {
             content
-                .background(.regularMaterial, in: shape)
+                .background {
+                    shape
+                        .fill(.regularMaterial)
+                        .overlay {
+                            shape.fill(Color.black.opacity(0.56))
+                        }
+                }
                 .overlay {
                     shape.stroke(Color.white.opacity(0.14), lineWidth: 0.5)
                 }
