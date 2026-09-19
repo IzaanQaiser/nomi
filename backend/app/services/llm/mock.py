@@ -69,6 +69,14 @@ class MockProvider(LLMProvider):
             if any(w in said.lower() for w in ("stuck", "help", "hint", "confused", "idk")):
                 return "You're close. Look back at the method in your notes and try the next small step — I won't spoil it."
             return f"Got it. Let's stay with what you just said: {said[:120]}"
+        if "full worked solution" in system or "Show the full worked solution" in user:
+            return (
+                "[mock solution]\n"
+                "1. Restate the problem.\n"
+                "2. Apply the method from your sources.\n"
+                "3. Arrive at the final answer.\n"
+                "(Replace with a real model when GEMINI_API_KEY is set.)"
+            )
         # Analyze pass: if the prompt already contains retrieved source text,
         # acknowledge grounding so the pipeline is testable without a key.
         has_sources = (
@@ -81,5 +89,5 @@ class MockProvider(LLMProvider):
             else "mock: analyzed page with no source context"
         )
         return (
-            '{"status": "ok", "hint": null, "reasoning": "' + reasoning + '"}'
+            '{"status": "ok", "hint": null, "note": null, "reasoning": "' + reasoning + '"}'
         )

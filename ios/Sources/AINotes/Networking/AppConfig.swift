@@ -32,7 +32,7 @@ enum AppConfig {
         #if targetEnvironment(simulator)
         return URL(string: "http://localhost:8000")
         #else
-        return URL(string: "https://nomi-production-82aa.up.railway.app")
+        return nil
         #endif
     }
 
@@ -68,11 +68,17 @@ enum AppConfig {
 
     private static func isRetiredDevelopmentURL(_ url: URL) -> Bool {
         guard let host = url.host?.lowercased() else { return false }
-        if host.hasSuffix(".trycloudflare.com") || host == "localhost" {
+        // Drop stale LAN / hotspot / temporary tunnel overrides so installs
+        // use the shared Railway BackendBaseURL.
+        if host == "localhost" || host.hasSuffix(".local") {
+            return true
+        }
+        if host.hasSuffix(".trycloudflare.com") {
             return true
         }
         return host.hasPrefix("192.168.")
             || host.hasPrefix("172.20.")
             || host.hasPrefix("169.254.")
+            || host.hasPrefix("10.")
     }
 }

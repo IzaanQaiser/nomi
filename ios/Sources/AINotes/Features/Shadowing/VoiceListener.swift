@@ -95,9 +95,11 @@ final class VoiceListener: NSObject {
                 userInfo: [NSLocalizedDescriptionKey: "Mic isn't ready. Tap the mic again."]
             )
         }
-        // nil format = hardware format; passing a stale 0Hz format crashes.
-        input.installTap(onBus: 0, bufferSize: 1024, format: nil) { [weak self] buffer, _ in
-            self?.request?.append(buffer)
+        // Capture request locally so the audio-thread tap does not bounce through
+        // MainActor-isolated `self` (that drops buffers and kills transcription).
+        let requestRef = request
+        input.installTap(onBus: 0, bufferSize: 1024, format: nil) { buffer, _ in
+            requestRef.append(buffer)
         }
         hasTap = true
 

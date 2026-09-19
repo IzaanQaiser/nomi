@@ -32,7 +32,7 @@ struct NotesView: View {
     @State private var showPDFImporter = false
     @State private var importError: String?
     @State private var bgCache = BackgroundCache()
-    @StateObject private var shadowing: ShadowingEngine
+    @ObservedObject var shadowing: ShadowingEngine
 
     private let project: Project
     /// Fixed paper page size in points (~US Letter aspect). Ink is stored in
@@ -44,8 +44,9 @@ struct NotesView: View {
     private var pagesKey: String { "paperPages-\(project.id)" }
     private var storeKey: String { mode == .pdf ? "\(project.id)-pdf" : "\(project.id)-paper" }
 
-    init(project: Project) {
+    init(project: Project, shadowing: ShadowingEngine) {
         self.project = project
+        _shadowing = ObservedObject(wrappedValue: shadowing)
         let defaults = UserDefaults.standard
         _paperStyle = State(initialValue: PaperStyle(rawValue: defaults.string(forKey: "paperStyle-\(project.id)") ?? "") ?? .ruled)
         _paperColor = State(initialValue: PaperColor(rawValue: defaults.string(forKey: "paperColor-\(project.id)") ?? "") ?? .white)
@@ -53,7 +54,6 @@ struct NotesView: View {
         let hasPDF = PDFNoteStore.hasPDF(projectId: project.id)
         _mode = State(initialValue: hasPDF ? .pdf : .paper)
         _pdfURL = State(initialValue: hasPDF ? PDFNoteStore.pdfURL(projectId: project.id) : nil)
-        _shadowing = StateObject(wrappedValue: ShadowingEngine(projectId: project.id))
     }
 
     // MARK: Page model

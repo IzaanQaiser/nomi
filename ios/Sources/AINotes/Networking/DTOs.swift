@@ -70,9 +70,40 @@ struct ChatResponse: Codable, Hashable {
 struct ShadowResponse: Codable, Hashable {
     let status: String
     let hint: String?
+    let note: String?
     let reasoning: String?
     let problem: String?
     let grounding: String?
+
+    enum CodingKeys: String, CodingKey {
+        case status, hint, note, reasoning, problem, grounding
+    }
+
+    init(
+        status: String,
+        hint: String?,
+        note: String? = nil,
+        reasoning: String?,
+        problem: String?,
+        grounding: String?
+    ) {
+        self.status = status
+        self.hint = hint
+        self.note = note
+        self.reasoning = reasoning
+        self.problem = problem
+        self.grounding = grounding
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        status = try c.decode(String.self, forKey: .status)
+        hint = try c.decodeIfPresent(String.self, forKey: .hint)
+        note = try c.decodeIfPresent(String.self, forKey: .note)
+        reasoning = try c.decodeIfPresent(String.self, forKey: .reasoning)
+        problem = try c.decodeIfPresent(String.self, forKey: .problem)
+        grounding = try c.decodeIfPresent(String.self, forKey: .grounding)
+    }
 }
 
 struct InferProblemResponse: Codable, Hashable {
@@ -81,6 +112,12 @@ struct InferProblemResponse: Codable, Hashable {
 
 struct TalkResponse: Codable, Hashable {
     let reply: String
+    let problem: String?
+    let grounding: String?
+}
+
+struct SolutionResponse: Codable, Hashable {
+    let solution: String
     let problem: String?
     let grounding: String?
 }

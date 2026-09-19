@@ -1,8 +1,7 @@
 import SwiftUI
 
 /// Nomi in the top-right of the canvas. Tapping the character toggles the
-/// watching tutor. The mic starts a voice turn: talk, or stay silent and the
-/// tutor cuts in after a beat.
+/// watching tutor. Voice mute lives in the top toolbar.
 struct MascotView: View {
     @ObservedObject var engine: ShadowingEngine
 
@@ -28,43 +27,28 @@ struct MascotView: View {
                     .transition(.move(edge: .trailing).combined(with: .opacity))
             }
 
-            VStack(spacing: 4) {
-                Button(action: engine.toggle) {
-                    HStack(alignment: .center, spacing: 6) {
-                        Image(poseName)
-                            .resizable()
-                            .interpolation(.high)
-                            .scaledToFit()
-                            .frame(width: nomiSize, height: nomiSize)
-                            .shadow(color: .black.opacity(0.16), radius: 6, y: 2)
-                            .id(poseName)
-                            .transition(.opacity)
+            Button(action: engine.toggle) {
+                HStack(alignment: .center, spacing: 6) {
+                    Image(poseName)
+                        .resizable()
+                        .interpolation(.high)
+                        .scaledToFit()
+                        .frame(width: nomiSize, height: nomiSize)
+                        .shadow(color: .black.opacity(0.16), radius: 6, y: 2)
+                        .id(poseName)
+                        .transition(.opacity)
 
-                        if isListening {
-                            AudioLevelBars()
-                                .frame(width: 14, height: 34)
-                                .transition(.opacity.combined(with: .scale(scale: 0.6)))
-                        }
+                    if isListening {
+                        AudioLevelBars()
+                            .frame(width: 14, height: 34)
+                            .transition(.opacity.combined(with: .scale(scale: 0.6)))
                     }
-                    .animation(.easeInOut(duration: 0.2), value: poseName)
-                    .animation(.easeInOut(duration: 0.18), value: isListening)
                 }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Shadowing tutor")
-
-                Button {
-                    if isListening { engine.cancelListening() }
-                    else { engine.startListening() }
-                } label: {
-                    Image(systemName: isListening ? "stop.fill" : "mic.fill")
-                        .font(.system(size: 14, weight: .bold))
-                        .foregroundStyle(.white)
-                        .frame(width: 32, height: 32)
-                        .background(isListening ? Color.red : Color.blue, in: Circle())
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel(isListening ? "Stop listening" : "Talk to tutor")
+                .animation(.easeInOut(duration: 0.2), value: poseName)
+                .animation(.easeInOut(duration: 0.18), value: isListening)
             }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Shadowing tutor")
         }
         .animation(.spring(response: 0.35, dampingFraction: 0.8), value: bubbleText)
     }
@@ -87,7 +71,9 @@ struct MascotView: View {
         switch engine.state {
         case .off, .idle: return nil
         case .thinking: return nil
-        case .onTrack: return "Looks good so far 👍"
+        case let .onTrack(note):
+            if let note, !note.isEmpty { return note }
+            return "Looks good so far 👍"
         case let .hint(h): return h
         case let .listening(partial):
             return partial.isEmpty ? "Listening… stay silent if you want me to jump in." : partial

@@ -15,7 +15,7 @@ final class ShadowingEngine: ObservableObject {
         case off          // disabled
         case idle         // watching, nothing to say
         case thinking     // analysis in flight
-        case onTrack      // last check looked fine
+        case onTrack(String?) // last check looked fine; optional fix celebration
         case hint(String) // interrupt with a nudge
         case listening(String) // live transcript (may be empty)
         case reply(String)     // spoken tutor turn
@@ -23,6 +23,12 @@ final class ShadowingEngine: ObservableObject {
 
     @Published private(set) var state: State = .off
     var isEnabled: Bool { if case .off = state { return false } else { return true } }
+
+    /// True while a push-to-talk listen turn is active (toolbar mic icon).
+    var isListening: Bool {
+        if case .listening = state { return true }
+        return false
+    }
 
     /// Set by the canvas layer: renders the active page (ink + background) to an
     /// image no wider than `maxWidth` points.
@@ -56,6 +62,22 @@ final class ShadowingEngine: ObservableObject {
     private var activePage = 0
     private var problemContext: String?
 
+    /// Cheap text-only memory of tutoring turns on this page. Soft-capped so a
+    /// long session stays prompt-friendly; short lines are cheap enough to keep
+    /// nearly everything.
+    private var recentMemory: [String] = []
+    private let maxMemoryLines = 60
+    private let maxMemoryChars = 180
+    private let maxMemoryTotalChars = 12_000
+
+    /// Same-mistake counter for unlocking a full solution reveal.
+    private var mistakeCounts: [String: Int] = [:]
+    private var offeredSolutionKeys: Set<String> = []
+    private let repeatThreshold = 3
+
+    /// Tutor → side chat notices (solution offers, etc.).
+    @Published private(set) var chatNotices: [TutorChatNotice] = []
+
     init(projectId: String) {
         self.projectId = projectId
         speaker.delegate = speechDelegate
@@ -69,6 +91,22 @@ final class ShadowingEngine: ObservableObject {
         guard index != activePage else { return }
         activePage = index
         problemContext = nil
+        recentMemory = []
+        mistakeCounts = [:]
+        offeredSolutionKeys = []
+    }
+
+    func consumeChatNotices() -> [TutorChatNotice] {
+        guard !chatNotices.isEmpty else { return [] }
+        let out = chatNotices
+        chatNotices = []
+        return out
+    }
+
+    /// Current page snapshot + memory for solution unlock.
+    func solutionRequestPayload() -> (imageBase64: String, problem: String?, memory: [String])? {
+        guard let image = snapshotProvider?(1024), let png = image.pngData() else { return nil }
+        return (png.base64EncodedString(), problemContext, recentMemory)
     }
 
     // MARK: Control
@@ -85,6 +123,15 @@ final class ShadowingEngine: ObservableObject {
             speaker.stopSpeaking(at: .immediate)
             state = .off
             stopTimer()
+        }
+    }
+
+    /// Toolbar mic: start a push-to-talk turn, or stop if already listening.
+    func toggleVoiceMute() {
+        if isListening {
+            cancelListening()
+        } else {
+            startListening()
         }
     }
 
@@ -212,28 +259,49 @@ final class ShadowingEngine: ObservableObject {
         let base64 = png.base64EncodedString()
         let projectId = self.projectId
         let cachedProblem = problemContext
+        let memory = recentMemory
         let page = activePage
+        let said = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        if said.isEmpty {
+            remember("Student stayed silent on the mic")
+        } else {
+            remember("Student said: \"\(said)\"")
+        }
         Task { [weak self] in
             do {
                 let resp = try await APIClient.shared.talk(
                     projectId: projectId,
                     imageBase64: base64,
                     utterance: text,
-                    problemContext: cachedProblem
+                    problemContext: cachedProblem,
+                    recentContext: memory
                 )
                 await MainActor.run {
                     if let problem = resp.problem {
                         self?.cacheProblem(problem, page: page)
                     }
+                    self?.remember("Tutor replied: \(resp.reply)")
                     self?.finish(with: .reply(resp.reply))
                     self?.speak(resp.reply)
                 }
             } catch {
                 await MainActor.run {
-                    self?.finish(with: .reply("I couldn't hear that. Try again?"))
+                    let message = Self.friendlyAPIError(error)
+                    self?.finish(with: .reply(message))
                 }
             }
         }
+    }
+
+    private static func friendlyAPIError(_ error: Error) -> String {
+        let text = error.localizedDescription.lowercased()
+        if text.contains("429") || text.contains("too many requests") || text.contains("resource_exhausted") {
+            return "Gemini rate limit hit — wait a minute or switch API keys, then try again."
+        }
+        if text.contains("401") || text.contains("403") || text.contains("api key") {
+            return "Backend API key issue — check GEMINI_API_KEY in the nomi backend .env."
+        }
+        return "Tutor request failed. Check the backend and try again."
     }
 
     private func speak(_ text: String) {
@@ -280,6 +348,7 @@ final class ShadowingEngine: ObservableObject {
 
     private func analyze() {
         guard let image = snapshotProvider?(1024), let png = image.pngData() else { return }
+        voice.cancel()
         inFlight = true
         state = .thinking
         lastAnalyzed = Date()
@@ -289,6 +358,7 @@ final class ShadowingEngine: ObservableObject {
         let base64 = png.base64EncodedString()
         let projectId = self.projectId
         let cachedProblem = problemContext
+        let memory = recentMemory
         let page = activePage
         Task { [weak self] in
             do {
@@ -296,7 +366,10 @@ final class ShadowingEngine: ObservableObject {
                 // off the image, retrieves sources, then analyzes. Later checks
                 // reuse the cached problem so we skip the extra vision pass.
                 let resp = try await APIClient.shared.shadow(
-                    projectId: projectId, imageBase64: base64, problemContext: cachedProblem
+                    projectId: projectId,
+                    imageBase64: base64,
+                    problemContext: cachedProblem,
+                    recentContext: memory
                 )
                 await MainActor.run {
                     if let problem = resp.problem {
@@ -315,14 +388,73 @@ final class ShadowingEngine: ObservableObject {
         problemContext = problem
     }
 
+    private func remember(_ line: String) {
+        let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        let clipped = String(trimmed.prefix(maxMemoryChars))
+        // Don't stack duplicate "on track" rows — they burn tokens for no gain.
+        if clipped.hasPrefix("Watch: on track"),
+           recentMemory.last?.hasPrefix("Watch: on track") == true {
+            return
+        }
+        if recentMemory.last == clipped { return }
+        recentMemory.append(clipped)
+        while recentMemory.count > maxMemoryLines
+            || recentMemory.reduce(0) { $0 + $1.count } > maxMemoryTotalChars
+        {
+            guard !recentMemory.isEmpty else { break }
+            recentMemory.removeFirst()
+        }
+    }
+
     private func apply(_ resp: ShadowResponse) {
         if resp.status == "interrupt", let hint = resp.hint, !hint.isEmpty {
+            remember("Watch: called out mistake — \(hint)")
+            recordRepeatedMistake(hint)
             finish(with: .hint(hint))
             speak(hint)
         } else {
-            finish(with: .onTrack)
+            let note = resp.note?.trimmingCharacters(in: .whitespacesAndNewlines)
+            if let note, !note.isEmpty {
+                remember("Watch: student fixed earlier issue — \(note)")
+                finish(with: .onTrack(note))
+                speak(note)
+            } else {
+                remember("Watch: on track")
+                finish(with: .onTrack(nil))
+            }
             scheduleOnTrackReset()
         }
+    }
+
+    private func recordRepeatedMistake(_ hint: String) {
+        let key = Self.mistakeKey(hint)
+        guard !key.isEmpty else { return }
+        let count = (mistakeCounts[key] ?? 0) + 1
+        mistakeCounts[key] = count
+        guard count >= repeatThreshold, !offeredSolutionKeys.contains(key) else { return }
+        offeredSolutionKeys.insert(key)
+        remember("System: offered full solution after \(count)× same mistake")
+        chatNotices.append(
+            TutorChatNotice.solutionOffer(
+                mistakeKey: key,
+                summary: hint,
+                count: count
+            )
+        )
+    }
+
+    /// Collapse a hint into a stable key so near-identical nudges count together.
+    private static func mistakeKey(_ hint: String) -> String {
+        let lowered = hint.lowercased()
+        let allowed = CharacterSet.alphanumerics.union(.whitespaces)
+        let cleaned = String(lowered.unicodeScalars.map { allowed.contains($0) ? Character($0) : " " })
+        let words = cleaned
+            .components(separatedBy: .whitespacesAndNewlines)
+            .filter { $0.count > 2 }
+            .prefix(8)
+        let key = words.joined(separator: " ")
+        return key.isEmpty ? lowered.trimmingCharacters(in: .whitespacesAndNewlines) : key
     }
 
     private func finish(with newState: State) {
@@ -340,6 +472,17 @@ final class ShadowingEngine: ObservableObject {
         }
         onTrackResetWork = work
         DispatchQueue.main.asyncAfter(deadline: .now() + 3, execute: work)
+    }
+}
+
+/// Notices the shadowing tutor posts into the side chat (solution unlocks, etc.).
+enum TutorChatNotice: Equatable, Identifiable {
+    case solutionOffer(mistakeKey: String, summary: String, count: Int)
+
+    var id: String {
+        switch self {
+        case let .solutionOffer(key, _, count): return "offer-\(key)-\(count)"
+        }
     }
 }
 

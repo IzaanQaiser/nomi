@@ -71,11 +71,16 @@ class ShadowRequest(BaseModel):
     image_base64: str
     # What the student is working on (problem statement / context), optional.
     problem_context: str | None = None
+    # Short text-only memory of recent watch/talk turns on this page.
+    # Cheap: no prior images. Caps are enforced server-side.
+    recent_context: list[str] = []
 
 
 class ShadowResponse(BaseModel):
     status: str  # "ok" | "interrupt"
     hint: str | None = None
+    # Optional short celebration when they fixed a previously called-out mistake.
+    note: str | None = None
     reasoning: str | None = None
     # Problem statement used for retrieval (inferred off the page if omitted).
     problem: str | None = None
@@ -98,9 +103,24 @@ class TalkRequest(BaseModel):
     # silent — the tutor should cut in.
     utterance: str = ""
     problem_context: str | None = None
+    recent_context: list[str] = []
 
 
 class TalkResponse(BaseModel):
     reply: str
+    problem: str | None = None
+    grounding: str | None = None
+
+
+class SolutionRequest(BaseModel):
+    image_base64: str
+    problem_context: str | None = None
+    recent_context: list[str] = []
+    # The repeated nudge the student kept hitting (helps the model target the reveal).
+    mistake_summary: str | None = None
+
+
+class SolutionResponse(BaseModel):
+    solution: str
     problem: str | None = None
     grounding: str | None = None

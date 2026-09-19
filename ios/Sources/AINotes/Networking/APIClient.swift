@@ -10,7 +10,12 @@ enum APIError: LocalizedError {
         switch self {
         case .backendNotConfigured:
             return "No backend URL is configured. Open Backend Settings and enter your HTTPS API URL."
-        case let .badStatus(code, body): return "Server error \(code): \(body)"
+        case let .badStatus(code, body):
+            if body.contains("trycloudflare.com") || body.contains("Bad Gateway") || body.lowercased().contains("<html") {
+                return "Server error \(code): Cloudflare tunnel couldn't reach the Mac backend. Make sure uvicorn and cloudflared are both running."
+            }
+            let trimmed = body.trimmingCharacters(in: .whitespacesAndNewlines)
+            return "Server error \(code): \(trimmed.prefix(180))"
         case let .decoding(msg): return "Decoding failed: \(msg)"
         }
     }
@@ -128,9 +133,15 @@ actor APIClient {
         try await post("/projects/\(projectId)/chat", body: ["question": question], session: llmSession)
     }
 
-    func shadow(projectId: String, imageBase64: String, problemContext: String?) async throws -> ShadowResponse {
+    func shadow(
+        projectId: String,
+        imageBase64: String,
+        problemContext: String?,
+        recentContext: [String] = []
+    ) async throws -> ShadowResponse {
         var body: [String: Any] = ["image_base64": imageBase64]
         if let problemContext { body["problem_context"] = problemContext }
+        if !recentContext.isEmpty { body["recent_context"] = recentContext }
         return try await post("/projects/\(projectId)/shadow", body: body, session: llmSession)
     }
 
@@ -145,13 +156,34 @@ actor APIClient {
         return "Connected (\(health.provider))"
     }
 
-    func talk(projectId: String, imageBase64: String, utterance: String, problemContext: String?) async throws -> TalkResponse {
+    func talk(
+        projectId: String,
+        imageBase64: String,
+        utterance: String,
+        problemContext: String?,
+        recentContext: [String] = []
+    ) async throws -> TalkResponse {
         var body: [String: Any] = [
             "image_base64": imageBase64,
             "utterance": utterance,
         ]
         if let problemContext { body["problem_context"] = problemContext }
+        if !recentContext.isEmpty { body["recent_context"] = recentContext }
         return try await post("/projects/\(projectId)/shadow/talk", body: body, session: llmSession)
+    }
+
+    func revealSolution(
+        projectId: String,
+        imageBase64: String,
+        problemContext: String?,
+        recentContext: [String] = [],
+        mistakeSummary: String?
+    ) async throws -> SolutionResponse {
+        var body: [String: Any] = ["image_base64": imageBase64]
+        if let problemContext { body["problem_context"] = problemContext }
+        if !recentContext.isEmpty { body["recent_context"] = recentContext }
+        if let mistakeSummary { body["mistake_summary"] = mistakeSummary }
+        return try await post("/projects/\(projectId)/shadow/solution", body: body, session: llmSession)
     }
 
     // MARK: Helpers

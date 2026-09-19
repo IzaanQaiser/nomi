@@ -60,7 +60,9 @@ struct ProjectsView: View {
                     ScrollView {
                         LazyVGrid(columns: columns, spacing: 20) {
                             ForEach(model.projects) { project in
-                                NavigationLink(value: project) {
+                                NavigationLink {
+                                    ProjectShellView(project: project)
+                                } label: {
                                     ProjectCard(project: project)
                                 }
                                 .buttonStyle(.plain)
@@ -76,9 +78,6 @@ struct ProjectsView: View {
                 }
             }
             .navigationTitle("Notebooks")
-            .navigationDestination(for: Project.self) { project in
-                ProjectShellView(project: project)
-            }
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     Button {

@@ -10,10 +10,17 @@ from ..schemas import (
     InferProblemResponse,
     ShadowRequest,
     ShadowResponse,
+    SolutionRequest,
+    SolutionResponse,
     TalkRequest,
     TalkResponse,
 )
-from ..services.shadow import analyze_work, infer_problem, talk_with_student
+from ..services.shadow import (
+    analyze_work,
+    infer_problem,
+    reveal_solution,
+    talk_with_student,
+)
 
 router = APIRouter(prefix="/projects/{project_id}/shadow", tags=["shadow"])
 
@@ -28,7 +35,13 @@ def shadow(
     project_id: str, body: ShadowRequest, db: Session = Depends(get_db)
 ) -> ShadowResponse:
     _require_project(project_id, db)
-    return analyze_work(db, project_id, body.image_base64, body.problem_context)
+    return analyze_work(
+        db,
+        project_id,
+        body.image_base64,
+        body.problem_context,
+        body.recent_context,
+    )
 
 
 @router.post("/infer-problem", response_model=InferProblemResponse)
@@ -45,5 +58,25 @@ def talk(
 ) -> TalkResponse:
     _require_project(project_id, db)
     return talk_with_student(
-        db, project_id, body.image_base64, body.utterance, body.problem_context
+        db,
+        project_id,
+        body.image_base64,
+        body.utterance,
+        body.problem_context,
+        body.recent_context,
+    )
+
+
+@router.post("/solution", response_model=SolutionResponse)
+def solution(
+    project_id: str, body: SolutionRequest, db: Session = Depends(get_db)
+) -> SolutionResponse:
+    _require_project(project_id, db)
+    return reveal_solution(
+        db,
+        project_id,
+        body.image_base64,
+        body.problem_context,
+        body.recent_context,
+        body.mistake_summary,
     )

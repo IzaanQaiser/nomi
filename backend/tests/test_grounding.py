@@ -125,6 +125,24 @@ class GroundingTests(unittest.TestCase):
         self.assertEqual(resp.grounding, "empty")
         self.assertIn("no source context", resp.reasoning or "")
 
+    def test_shadow_accepts_recent_context(self):
+        self._ready_source(
+            "Lecture 3",
+            "When completing the square, move the constant first, then add (b/2)^2.",
+        )
+        resp = analyze_work(
+            self.db,
+            self.project.id,
+            image_base64="dGVzdA==",
+            problem_context="complete the square",
+            recent_context=[
+                "Watch: called out mistake — check the sign on (b/2)^2",
+                "Student said: \"does this look right?\"",
+            ],
+        )
+        self.assertEqual(resp.status, "ok")
+        self.assertEqual(resp.grounding, "full")
+
 
 class JsonParseTests(unittest.TestCase):
     def test_fenced_json(self):
@@ -132,6 +150,18 @@ class JsonParseTests(unittest.TestCase):
         data = _parse_analyze(raw)
         self.assertEqual(data["status"], "interrupt")
         self.assertEqual(data["hint"], "check the sign")
+
+    def test_format_recent_caps_lines(self):
+        from app.services.shadow import _format_recent
+
+        text = _format_recent(
+            [f"line {i} " + ("x" * 300) for i in range(10)]
+        )
+        self.assertIn("Recent tutoring", text)
+        # Soft cap keeps more than the old 5-line window.
+        self.assertEqual(text.count("\n- "), 10)
+        # Each bullet is truncated
+        self.assertNotIn("x" * 250, text)
 
 
 if __name__ == "__main__":

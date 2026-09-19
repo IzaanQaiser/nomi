@@ -42,7 +42,15 @@ def init_db() -> None:
     from . import models  # noqa: F401
 
     if settings.database_url.startswith("sqlite"):
-        Base.metadata.create_all(bind=engine)
+        # checkfirst=True is the default, but two uvicorn startups can still race
+        # and hit "table already exists". Treat that as success.
+        from sqlalchemy.exc import OperationalError
+
+        try:
+            Base.metadata.create_all(bind=engine, checkfirst=True)
+        except OperationalError as exc:
+            if "already exists" not in str(exc).lower():
+                raise
         return
 
     # Hosted Postgres is migration-owned. This also fails fast when credentials
