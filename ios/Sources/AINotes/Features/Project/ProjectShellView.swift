@@ -56,6 +56,7 @@ struct ProjectShellView: View {
                 .frame(maxHeight: .infinity)
             }
         }
+        .preferredColorScheme(.dark)
         .toolbar(.hidden, for: .navigationBar)
         .sheet(isPresented: $showSources) {
             NavigationStack {
