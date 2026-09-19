@@ -24,13 +24,11 @@ struct FirstLaunchView: View {
 
     let onProjectCreated: (Project) -> Void
 
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @FocusState private var isCourseFieldFocused: Bool
     @State private var courseName = ""
     @State private var phase: Phase = .editing
     @State private var errorMessage: String?
     @State private var showExplanation = false
-    @State private var hasAppeared = false
 
     private var normalizedCourseName: String {
         courseName.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -53,16 +51,10 @@ struct FirstLaunchView: View {
                 }
                 .frame(maxWidth: 620)
                 .padding(.horizontal, 36)
-                .opacity(hasAppeared ? 1 : 0)
-                .offset(y: hasAppeared ? 0 : 10)
 
                 Spacer(minLength: usesKeyboardLayout ? 8 : 48)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .animation(
-                reduceMotion ? nil : .easeInOut(duration: 0.24),
-                value: usesKeyboardLayout
-            )
         }
         .background {
             NomiTheme.paper
@@ -75,36 +67,28 @@ struct FirstLaunchView: View {
                 .presentationDetents([.medium])
                 .presentationDragIndicator(.visible)
         }
-        .onAppear {
-            guard !hasAppeared else { return }
-            if reduceMotion {
-                hasAppeared = true
-            } else {
-                withAnimation(.easeOut(duration: 0.45)) {
-                    hasAppeared = true
-                }
-            }
-        }
     }
 
     private func hero(compact: Bool) -> some View {
         VStack(spacing: compact ? 6 : 22) {
             ZStack {
                 Circle()
-                    .fill(NomiTheme.blue.opacity(0.13))
+                    .fill(
+                        RadialGradient(
+                            colors: [NomiTheme.blue.opacity(0.13), NomiTheme.blue.opacity(0)],
+                            center: .center,
+                            startRadius: compact ? 18 : 32,
+                            endRadius: compact ? 50 : 90
+                        )
+                    )
                     .frame(width: compact ? 100 : 180, height: compact ? 100 : 180)
-                    .blur(radius: compact ? 18 : 28)
 
                 Image(mascotAsset)
                     .resizable()
-                    .interpolation(.high)
                     .scaledToFit()
                     .frame(width: compact ? 52 : 84, height: compact ? 52 : 84)
-                    .id(mascotAsset)
-                    .transition(.opacity)
             }
             .frame(width: compact ? 110 : 190, height: compact ? 62 : 132)
-            .animation(.easeInOut(duration: 0.22), value: mascotAsset)
             .accessibilityHidden(true)
 
             Text("I learn how you learn.\nI help when you need it.")
@@ -159,8 +143,6 @@ struct FirstLaunchView: View {
                 }
                 .buttonStyle(.plain)
                 .disabled(!canContinue)
-                .animation(.easeInOut(duration: 0.18), value: canContinue)
-                .animation(.easeInOut(duration: 0.18), value: phase)
                 .accessibilityLabel("Continue with this course")
             }
             .padding(.leading, 18)
@@ -172,8 +154,6 @@ struct FirstLaunchView: View {
                     .stroke(fieldBorderColor, lineWidth: isCourseFieldFocused ? 1.5 : 1)
             }
             .shadow(color: NomiTheme.ink.opacity(0.07), radius: 14, y: 6)
-            .animation(.easeInOut(duration: 0.18), value: isCourseFieldFocused)
-            .animation(.easeInOut(duration: 0.18), value: canContinue)
 
             if let errorMessage {
                 Label(errorMessage, systemImage: "exclamationmark.circle.fill")
@@ -198,8 +178,6 @@ struct FirstLaunchView: View {
                 .buttonStyle(.plain)
             }
         }
-        .animation(.easeInOut(duration: 0.2), value: errorMessage)
-        .animation(.easeInOut(duration: 0.2), value: phase)
     }
 
     private var mascotAsset: String {
