@@ -31,17 +31,20 @@ final class NotebookSession: ObservableObject {
 /// in a sheet; the live tutor lives in the mascot and can post into chat.
 struct ProjectShellView: View {
     @StateObject private var session: NotebookSession
+    private let notebook: ProjectNotebook
     @State private var showSources = false
     @State private var showChat = false
 
-    init(project: Project) {
+    init(project: Project, notebook: ProjectNotebook? = nil) {
         _session = StateObject(wrappedValue: NotebookSession(project: project))
+        self.notebook = notebook ?? .primary(for: project)
     }
 
     var body: some View {
         HStack(spacing: 0) {
             NotesView(
                 project: session.project,
+                notebook: notebook,
                 shadowing: session.shadowing,
                 onShowSources: { showSources = true }
             )

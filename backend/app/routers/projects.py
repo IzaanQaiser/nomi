@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 
 from ..db import get_db
 from ..models import Project, Source
-from ..schemas import ProjectCreate, ProjectOut
+from ..schemas import ProjectCreate, ProjectOut, ProjectUpdate
 from ..services.file_store import delete_files
 
 router = APIRouter(prefix="/projects", tags=["projects"])
@@ -30,6 +30,24 @@ def get_project(project_id: str, db: Session = Depends(get_db)) -> Project:
     project = db.get(Project, project_id)
     if project is None:
         raise HTTPException(404, "Project not found")
+    return project
+
+
+@router.patch("/{project_id}", response_model=ProjectOut)
+def update_project(
+    project_id: str,
+    body: ProjectUpdate,
+    db: Session = Depends(get_db),
+) -> Project:
+    project = db.get(Project, project_id)
+    if project is None:
+        raise HTTPException(404, "Project not found")
+    name = body.name.strip()
+    if not name:
+        raise HTTPException(422, "Project name cannot be empty")
+    project.name = name
+    db.commit()
+    db.refresh(project)
     return project
 
 

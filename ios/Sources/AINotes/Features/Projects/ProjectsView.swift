@@ -36,13 +36,20 @@ final class ProjectsViewModel {
         }
     }
 
-    func delete(_ project: Project) async {
+    func update(_ project: Project) {
+        guard let index = projects.firstIndex(where: { $0.id == project.id }) else { return }
+        projects[index] = project
+    }
+
+    func delete(_ project: Project) async -> Bool {
         do {
             try await APIClient.shared.deleteProject(id: project.id)
             projects.removeAll { $0.id == project.id }
             sourceCounts[project.id] = nil
+            return true
         } catch {
             errorMessage = error.localizedDescription
+            return false
         }
     }
 
@@ -106,7 +113,19 @@ struct ProjectsView: View {
             .preferredColorScheme(.light)
             .toolbar(.hidden, for: .navigationBar)
             .navigationDestination(for: Project.self) { project in
-                ProjectShellView(project: project)
+                ProjectDetailView(
+                    project: project,
+                    onProjectUpdated: { updated in
+                        model.update(updated)
+                    },
+                    onProjectDeleted: {
+                        let didDelete = await model.delete(project)
+                        if didDelete {
+                            path.removeAll { $0.id == project.id }
+                        }
+                        return didDelete
+                    }
+                )
             }
             .overlay {
                 if model.isLoading && model.projects.isEmpty {
@@ -165,7 +184,7 @@ struct ProjectsView: View {
                 Button("Delete Project", role: .destructive) {
                     guard let project = projectPendingDeletion else { return }
                     projectPendingDeletion = nil
-                    Task { await model.delete(project) }
+                    Task { _ = await model.delete(project) }
                 }
                 Button("Cancel", role: .cancel) { projectPendingDeletion = nil }
             } message: {
@@ -367,7 +386,7 @@ private struct ProjectRow: View {
             .shadow(color: NomiTheme.ink.opacity(0.035), radius: 8, y: 3)
         }
         .buttonStyle(.plain)
-        .accessibilityHint("Opens the project notebook")
+        .accessibilityHint("Opens the project")
     }
 
     private var sourceSubtitle: String {

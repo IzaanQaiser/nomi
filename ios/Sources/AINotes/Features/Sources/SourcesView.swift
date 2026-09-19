@@ -40,6 +40,18 @@ final class SourcesViewModel {
         } catch { errorMessage = error.localizedDescription }
     }
 
+    func delete(_ source: Source) async {
+        do {
+            try await APIClient.shared.deleteSource(projectId: project.id, sourceId: source.id)
+            if PDFNoteStore.selectedSourceID(projectId: project.id) == source.id {
+                try? PDFNoteStore.removePDF(projectId: project.id)
+            }
+            sources.removeAll { $0.id == source.id }
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
     /// Ingestion used to run after the HTTP response; poll in case the server
     /// still returns `pending`. Stop as soon as the source is ready or failed.
     private func pollUntilReady(id: String) async {
@@ -98,6 +110,20 @@ struct SourcesView: View {
                         Spacer()
                         StatusBadge(status: source.status)
                             .id("\(source.id)-\(source.status)")
+                    }
+                    .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                        Button(role: .destructive) {
+                            Task { await model.delete(source) }
+                        } label: {
+                            Label("Delete", systemImage: "trash")
+                        }
+                    }
+                    .contextMenu {
+                        Button(role: .destructive) {
+                            Task { await model.delete(source) }
+                        } label: {
+                            Label("Delete Source", systemImage: "trash")
+                        }
                     }
                 }
             }

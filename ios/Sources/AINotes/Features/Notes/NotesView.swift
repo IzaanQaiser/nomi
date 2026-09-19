@@ -38,30 +38,36 @@ struct NotesView: View {
     @ObservedObject var shadowing: ShadowingEngine
 
     private let project: Project
+    private let notebookTitle: String
+    private let storageID: String
     private let onShowSources: () -> Void
     /// Fixed paper page size in points (~US Letter aspect). Ink is stored in
     /// these coordinates, so it's stable regardless of screen size.
     private let paperSize = CGSize(width: 1024, height: 1325)
 
-    private var styleKey: String { "paperStyle-\(project.id)" }
-    private var colorKey: String { "paperColor-\(project.id)" }
-    private var pagesKey: String { "paperPages-\(project.id)" }
-    private var storeKey: String { mode == .pdf ? "\(project.id)-pdf" : "\(project.id)-paper" }
+    private var styleKey: String { "paperStyle-\(storageID)" }
+    private var colorKey: String { "paperColor-\(storageID)" }
+    private var pagesKey: String { "paperPages-\(storageID)" }
+    private var storeKey: String { mode == .pdf ? "\(storageID)-pdf" : "\(storageID)-paper" }
 
     init(
         project: Project,
+        notebook: ProjectNotebook,
         shadowing: ShadowingEngine,
         onShowSources: @escaping () -> Void
     ) {
         self.project = project
+        notebookTitle = notebook.title
+        storageID = notebook.storageID(projectID: project.id)
         self.onShowSources = onShowSources
         _shadowing = ObservedObject(wrappedValue: shadowing)
         let defaults = UserDefaults.standard
-        _paperStyle = State(initialValue: PaperStyle(rawValue: defaults.string(forKey: "paperStyle-\(project.id)") ?? "") ?? .ruled)
-        _paperColor = State(initialValue: PaperColor(rawValue: defaults.string(forKey: "paperColor-\(project.id)") ?? "") ?? .white)
-        _paperPages = State(initialValue: max(1, defaults.integer(forKey: "paperPages-\(project.id)")))
-        let storedPDFURL = PDFNoteStore.hasPDF(projectId: project.id)
-            ? PDFNoteStore.pdfURL(projectId: project.id)
+        let notebookStorageID = notebook.storageID(projectID: project.id)
+        _paperStyle = State(initialValue: PaperStyle(rawValue: defaults.string(forKey: "paperStyle-\(notebookStorageID)") ?? "") ?? .ruled)
+        _paperColor = State(initialValue: PaperColor(rawValue: defaults.string(forKey: "paperColor-\(notebookStorageID)") ?? "") ?? .white)
+        _paperPages = State(initialValue: max(1, defaults.integer(forKey: "paperPages-\(notebookStorageID)")))
+        let storedPDFURL = PDFNoteStore.hasPDF(projectId: notebookStorageID)
+            ? PDFNoteStore.pdfURL(projectId: notebookStorageID)
             : nil
         let storedPDF = storedPDFURL.flatMap(PDFDocument.init(url:))
         _mode = State(initialValue: storedPDF == nil ? .paper : .pdf)
@@ -189,7 +195,7 @@ struct NotesView: View {
         let scoped = picked.startAccessingSecurityScopedResource()
         defer { if scoped { picked.stopAccessingSecurityScopedResource() } }
         do {
-            let stored = try PDFNoteStore.importPDF(from: picked, projectId: project.id)
+            let stored = try PDFNoteStore.importPDF(from: picked, projectId: storageID)
             pdfURL = stored
             pdfDocument = PDFDocument(url: stored)
             mode = .pdf
@@ -267,7 +273,7 @@ struct NotesView: View {
                 .modifier(NotebookGlassIsland(shape: AnyShape(Capsule())))
             }
 
-            Text(project.name)
+            Text(notebookTitle)
                 .font(.headline)
                 .lineLimit(1)
                 .frame(maxWidth: 260)

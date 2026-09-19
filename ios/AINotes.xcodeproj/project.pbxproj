@@ -10,6 +10,7 @@
 		16FCDFEF48D8EB9EDA73E5EB /* NotesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 94458247361C0263A2E14C6B /* NotesView.swift */; };
 		18AC36FE26D50A2B0223F1BA /* VoiceListener.swift in Sources */ = {isa = PBXBuildFile; fileRef = FDA93EC4CF0D0827DF813DF7 /* VoiceListener.swift */; };
 		19C1EE07FFAE9E2CA4C84B68 /* MascotView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 023AB4D41B0AB1B14FC6B686 /* MascotView.swift */; };
+		1D73C8A97E2146E8B5F043A1 /* ProjectDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1D73C8A97E2146E8B5F043A2 /* ProjectDetailView.swift */; };
 		311924AE56E3DA7C9E559BDF /* NotePenIsland.swift in Sources */ = {isa = PBXBuildFile; fileRef = 864E8A7C87BFA3F295D7AAF4 /* NotePenIsland.swift */; };
 		56E9B90C5182C3AB0BD94489 /* PDFNoteStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 232BF27888FAD67E5A1CB1C5 /* PDFNoteStore.swift */; };
 		7072889C3D649B5341721BB3 /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3B7C3834AC2B3B2549409FB2 /* RootView.swift */; };
@@ -35,6 +36,7 @@
 /* Begin PBXFileReference section */
 		00FA25184C2F94DDD9D261BD /* AppConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppConfig.swift; sourceTree = "<group>"; };
 		023AB4D41B0AB1B14FC6B686 /* MascotView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MascotView.swift; sourceTree = "<group>"; };
+		1D73C8A97E2146E8B5F043A2 /* ProjectDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectDetailView.swift; sourceTree = "<group>"; };
 		0540F6611770B4C342C89FAC /* AINotes.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = AINotes.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		20B655AC6266D0A42ED869CB /* DTOs.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DTOs.swift; sourceTree = "<group>"; };
 		2150C64B92C8C4547D8384A1 /* ProjectShellView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectShellView.swift; sourceTree = "<group>"; };
@@ -102,6 +104,7 @@
 		9195BC2349DAEDBBDA6EE8EE /* Project */ = {
 			isa = PBXGroup;
 			children = (
+				1D73C8A97E2146E8B5F043A2 /* ProjectDetailView.swift */,
 				2150C64B92C8C4547D8384A1 /* ProjectShellView.swift */,
 			);
 			path = Project;
@@ -268,6 +271,7 @@
 				F0795B477D265B5199396FCD /* FirstLaunchView.swift in Sources */,
 				F739627B5CE397D4D334C94E /* InkPagerView.swift in Sources */,
 				19C1EE07FFAE9E2CA4C84B68 /* MascotView.swift in Sources */,
+				1D73C8A97E2146E8B5F043A1 /* ProjectDetailView.swift in Sources */,
 				311924AE56E3DA7C9E559BDF /* NotePenIsland.swift in Sources */,
 				16FCDFEF48D8EB9EDA73E5EB /* NotesView.swift in Sources */,
 				DE29E0382ED23ECB25AC56E9 /* OnboardingFlowView.swift in Sources */,

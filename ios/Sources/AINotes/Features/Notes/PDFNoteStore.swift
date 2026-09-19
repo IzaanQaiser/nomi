@@ -65,6 +65,21 @@ enum PDFNoteStore {
         setSelectedSource(nil, projectId: projectId)
     }
 
+    static func removeLocalNotebook(storageID: String) {
+        let pdf = pdfURL(projectId: storageID)
+        try? FileManager.default.removeItem(at: pdf)
+        for suffix in ["paper", "pdf"] {
+            let key = "\(storageID)-\(suffix)"
+            clearDrawings(key: key)
+            PageImageStore.removeAll(key: key)
+        }
+        let defaults = UserDefaults.standard
+        defaults.removeObject(forKey: "paperStyle-\(storageID)")
+        defaults.removeObject(forKey: "paperColor-\(storageID)")
+        defaults.removeObject(forKey: "paperPages-\(storageID)")
+        defaults.removeObject(forKey: sourceKey(projectId: storageID))
+    }
+
     private static func setSelectedSource(_ sourceId: String?, projectId: String) {
         let key = sourceKey(projectId: projectId)
         if let sourceId {

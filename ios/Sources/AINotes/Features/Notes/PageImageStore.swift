@@ -83,4 +83,10 @@ enum PageImageStore {
         let url = imageURL(key: key, fileName: fileName)
         try? FileManager.default.removeItem(at: url)
     }
+
+    static func removeAll(key: String) {
+        try? FileManager.default.removeItem(at: metaURL(key: key))
+        let directory = imagesDir(key: key)
+        try? FileManager.default.removeItem(at: directory)
+    }
 }

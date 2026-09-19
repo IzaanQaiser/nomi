@@ -66,6 +66,13 @@ actor APIClient {
         try await post("/projects", body: ["name": name])
     }
 
+    func updateProject(id: String, name: String) async throws -> Project {
+        var req = try request(path: "/projects/\(id)", method: "PATCH")
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.httpBody = try JSONSerialization.data(withJSONObject: ["name": name])
+        return try decode(try await send(req))
+    }
+
     func deleteProject(id: String) async throws {
         _ = try await send(try request(path: "/projects/\(id)", method: "DELETE"))
     }
