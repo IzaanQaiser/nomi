@@ -17,7 +17,11 @@ enum AppConfig {
     static var baseURL: URL? {
         if let saved = UserDefaults.standard.string(forKey: overrideKey),
            let url = normalizedURL(from: saved) {
-            return url
+            if isRetiredDevelopmentURL(url) {
+                UserDefaults.standard.removeObject(forKey: overrideKey)
+            } else {
+                return url
+            }
         }
 
         if let bundled = Bundle.main.object(forInfoDictionaryKey: bundledKey) as? String,
@@ -28,13 +32,15 @@ enum AppConfig {
         #if targetEnvironment(simulator)
         return URL(string: "http://localhost:8000")
         #else
-        return URL(string: "http://172.20.10.2:8000")
+        return URL(string: "https://nomi-production-82aa.up.railway.app")
         #endif
     }
 
     static var configuredURLString: String {
-        if let saved = UserDefaults.standard.string(forKey: overrideKey), !saved.isEmpty {
-            return saved
+        if let saved = UserDefaults.standard.string(forKey: overrideKey),
+           let url = normalizedURL(from: saved),
+           !isRetiredDevelopmentURL(url) {
+            return url.absoluteString
         }
         return (Bundle.main.object(forInfoDictionaryKey: bundledKey) as? String) ?? ""
     }
@@ -58,5 +64,15 @@ enum AppConfig {
         }
         components.path = components.path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
         return components.url
+    }
+
+    private static func isRetiredDevelopmentURL(_ url: URL) -> Bool {
+        guard let host = url.host?.lowercased() else { return false }
+        if host.hasSuffix(".trycloudflare.com") || host == "localhost" {
+            return true
+        }
+        return host.hasPrefix("192.168.")
+            || host.hasPrefix("172.20.")
+            || host.hasPrefix("169.254.")
     }
 }

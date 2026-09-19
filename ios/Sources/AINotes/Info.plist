@@ -21,7 +21,7 @@
 	<key>CFBundleVersion</key>
 	<string>1</string>
 	<key>BackendBaseURL</key>
-	<string>http://172.20.10.2:8000</string>
+	<string>https://nomi-production-82aa.up.railway.app</string>
 	<key>NSAppTransportSecurity</key>
 	<dict>
 		<key>NSAllowsLocalNetworking</key>
