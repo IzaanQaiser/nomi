@@ -20,13 +20,13 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.izaanqaiser.nomi
-        DEVELOPMENT_TEAM: BLA2RT6NBZ
+        DEVELOPMENT_TEAM: V753W9ZRD7
         TARGETED_DEVICE_FAMILY: "2"          # iPad only
         GENERATE_INFOPLIST_FILE: "NO"
     info:
       path: Sources/AINotes/Info.plist
       properties:
-        CFBundleDisplayName: AI Notes
+        CFBundleDisplayName: nomi
         BackendBaseURL: "https://nomi-production-82aa.up.railway.app"
         UILaunchScreen: {}
         UIApplicationSceneManifest:
