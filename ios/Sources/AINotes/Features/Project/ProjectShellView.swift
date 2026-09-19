@@ -40,7 +40,11 @@ struct ProjectShellView: View {
 
     var body: some View {
         HStack(spacing: 0) {
-            NotesView(project: session.project, shadowing: session.shadowing)
+            NotesView(
+                project: session.project,
+                shadowing: session.shadowing,
+                onShowSources: { showSources = true }
+            )
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
 
             if showChat {
@@ -52,26 +56,7 @@ struct ProjectShellView: View {
                 .frame(maxHeight: .infinity)
             }
         }
-        .navigationTitle(session.project.name)
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
-                Button {
-                    session.shadowing.toggleVoiceMute()
-                } label: {
-                    Label(
-                        session.shadowing.isListening ? "Stop" : "Talk",
-                        systemImage: session.shadowing.isListening ? "mic.fill" : "mic.slash.fill"
-                    )
-                }
-                .accessibilityLabel(session.shadowing.isListening ? "Stop listening" : "Talk to tutor")
-            }
-            ToolbarItem(placement: .topBarTrailing) {
-                Button {
-                    showSources = true
-                } label: { Label("Sources", systemImage: "doc.text.magnifyingglass") }
-            }
-        }
+        .toolbar(.hidden, for: .navigationBar)
         .sheet(isPresented: $showSources) {
             NavigationStack {
                 SourcesView(project: session.project)

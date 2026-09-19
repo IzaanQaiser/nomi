@@ -23,6 +23,7 @@ final class BackgroundCache {
 /// zoom (see `InkPagerView`). Paper templates and imported PDF pages are drawn
 /// as high-resolution backgrounds behind the ink.
 struct NotesView: View {
+    @Environment(\.dismiss) private var dismiss
     @State private var mode: NoteMode
     @State private var paperStyle: PaperStyle
     @State private var paperColor: PaperColor
@@ -37,6 +38,7 @@ struct NotesView: View {
     @ObservedObject var shadowing: ShadowingEngine
 
     private let project: Project
+    private let onShowSources: () -> Void
     /// Fixed paper page size in points (~US Letter aspect). Ink is stored in
     /// these coordinates, so it's stable regardless of screen size.
     private let paperSize = CGSize(width: 1024, height: 1325)
@@ -46,8 +48,13 @@ struct NotesView: View {
     private var pagesKey: String { "paperPages-\(project.id)" }
     private var storeKey: String { mode == .pdf ? "\(project.id)-pdf" : "\(project.id)-paper" }
 
-    init(project: Project, shadowing: ShadowingEngine) {
+    init(
+        project: Project,
+        shadowing: ShadowingEngine,
+        onShowSources: @escaping () -> Void
+    ) {
         self.project = project
+        self.onShowSources = onShowSources
         _shadowing = ObservedObject(wrappedValue: shadowing)
         let defaults = UserDefaults.standard
         _paperStyle = State(initialValue: PaperStyle(rawValue: defaults.string(forKey: "paperStyle-\(project.id)") ?? "") ?? .ruled)
@@ -129,25 +136,13 @@ struct NotesView: View {
         }
         .overlay(alignment: .topTrailing) {
             MascotView(engine: shadowing)
-                .padding(.top, 10)
+                .padding(.top, 82)
                 .padding(.trailing, 14)
         }
-        .toolbar {
-            ToolbarItemGroup(placement: .topBarTrailing) {
-                Button {
-                    tools.requestUndo()
-                } label: {
-                    Label("Undo", systemImage: "arrow.uturn.backward")
-                }
-                .disabled(!tools.canUndo)
-                Button {
-                    tools.requestRedo()
-                } label: {
-                    Label("Redo", systemImage: "arrow.uturn.forward")
-                }
-                .disabled(!tools.canRedo)
-                pageSettingsMenu
-            }
+        .overlay(alignment: .top) {
+            notebookHeader
+                .padding(.horizontal, 16)
+                .padding(.top, 8)
         }
         .onAppear { loadPDFIfNeeded() }
         .onChange(of: paperStyle) { _, style in
@@ -221,6 +216,85 @@ struct NotesView: View {
 
     // MARK: Page settings (top-corner menu)
 
+    private var notebookHeader: some View {
+        ZStack {
+            HStack {
+                Button {
+                    dismiss()
+                } label: {
+                    Image(systemName: "chevron.left")
+                        .font(.title2.weight(.bold))
+                        .frame(width: 48, height: 48)
+                        .contentShape(Circle())
+                }
+                .buttonStyle(.plain)
+                .modifier(NotebookGlassIsland(shape: AnyShape(Circle())))
+                .accessibilityLabel("Back")
+
+                Spacer(minLength: 180)
+
+                HStack(spacing: 2) {
+                    notebookActionButton(
+                        shadowing.isListening ? "Stop listening" : "Talk to tutor",
+                        systemImage: shadowing.isListening ? "mic.fill" : "mic.slash.fill"
+                    ) {
+                        shadowing.toggleVoiceMute()
+                    }
+
+                    notebookActionButton("Sources", systemImage: "doc.text.magnifyingglass") {
+                        onShowSources()
+                    }
+
+                    notebookActionButton("Undo", systemImage: "arrow.uturn.backward") {
+                        tools.requestUndo()
+                    }
+                    .disabled(!tools.canUndo)
+
+                    notebookActionButton("Redo", systemImage: "arrow.uturn.forward") {
+                        tools.requestRedo()
+                    }
+                    .disabled(!tools.canRedo)
+
+                    pageSettingsMenu
+                        .labelStyle(.iconOnly)
+                        .font(.title2.weight(.semibold))
+                        .frame(width: 48, height: 48)
+                        .contentShape(Rectangle())
+                        .accessibilityLabel("Page settings")
+                }
+                .padding(.horizontal, 5)
+                .padding(.vertical, 4)
+                .modifier(NotebookGlassIsland(shape: AnyShape(Capsule())))
+            }
+
+            Text(project.name)
+                .font(.headline)
+                .lineLimit(1)
+                .frame(maxWidth: 260)
+                .padding(.horizontal, 20)
+                .frame(height: 48)
+                .modifier(NotebookGlassIsland(shape: AnyShape(Capsule())))
+                .accessibilityAddTraits(.isHeader)
+        }
+        .foregroundStyle(.white)
+        .frame(maxWidth: .infinity, minHeight: 56)
+    }
+
+    private func notebookActionButton(
+        _ label: String,
+        systemImage: String,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            Image(systemName: systemImage)
+                .font(.title2.weight(.semibold))
+                .frame(width: 48, height: 48)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(label)
+    }
+
     private var pageSettingsMenu: some View {
         Menu {
             Picker("Template", selection: $paperStyle) {
@@ -263,5 +337,25 @@ struct NotesView: View {
             Label("Page settings", systemImage: "gearshape")
         }
         .menuOrder(.fixed)
+    }
+}
+
+private struct NotebookGlassIsland: ViewModifier {
+    let shape: AnyShape
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if #available(iOS 26.0, *) {
+            content
+                .glassEffect(.regular, in: shape)
+                .shadow(color: .black.opacity(0.18), radius: 14, y: 5)
+        } else {
+            content
+                .background(.regularMaterial, in: shape)
+                .overlay {
+                    shape.stroke(Color.white.opacity(0.14), lineWidth: 0.5)
+                }
+                .shadow(color: .black.opacity(0.18), radius: 14, y: 5)
+        }
     }
 }
