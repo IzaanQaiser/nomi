@@ -51,9 +51,13 @@ struct NotesView: View {
         _paperStyle = State(initialValue: PaperStyle(rawValue: defaults.string(forKey: "paperStyle-\(project.id)") ?? "") ?? .ruled)
         _paperColor = State(initialValue: PaperColor(rawValue: defaults.string(forKey: "paperColor-\(project.id)") ?? "") ?? .white)
         _paperPages = State(initialValue: max(1, defaults.integer(forKey: "paperPages-\(project.id)")))
-        let hasPDF = PDFNoteStore.hasPDF(projectId: project.id)
-        _mode = State(initialValue: hasPDF ? .pdf : .paper)
-        _pdfURL = State(initialValue: hasPDF ? PDFNoteStore.pdfURL(projectId: project.id) : nil)
+        let storedPDFURL = PDFNoteStore.hasPDF(projectId: project.id)
+            ? PDFNoteStore.pdfURL(projectId: project.id)
+            : nil
+        let storedPDF = storedPDFURL.flatMap(PDFDocument.init(url:))
+        _mode = State(initialValue: storedPDF == nil ? .paper : .pdf)
+        _pdfURL = State(initialValue: storedPDFURL)
+        _pdfDocument = State(initialValue: storedPDF)
     }
 
     // MARK: Page model
