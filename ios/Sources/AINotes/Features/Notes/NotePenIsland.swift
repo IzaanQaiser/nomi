@@ -41,18 +41,11 @@ final class NoteToolController: ObservableObject {
         }
     }
 
-    /// Which screen edge the floating island is parked against.
-    enum DockEdge: String {
-        case left, right, top, bottom
-        var isVertical: Bool { self == .left || self == .right }
-    }
-
     @Published var tool: Tool = .pen
     @Published var color: Color = .black
     @Published var width: CGFloat = 5
     /// Eraser removes whole strokes (object) vs. pixels (bitmap).
     @Published var eraserIsObject = true
-    @Published var dock: DockEdge = .bottom
     /// Whether the expanded color/width tray is showing.
     @Published var showsDetail = false
 
@@ -91,65 +84,31 @@ final class NoteToolController: ObservableObject {
 
 // MARK: - Floating tool island
 
-/// A compact, draggable tool palette that follows the app's design. Swipe it to
-/// any edge (left/right/top/bottom); tap the swatch to reveal colors + widths.
+/// A compact tool palette fixed to the bottom of the notebook. Tap the swatch
+/// to reveal colors and stroke widths.
 struct PenIslandView: View {
     @ObservedObject var tools: NoteToolController
-    @GestureState private var drag: CGSize = .zero
 
     private let barPadding: CGFloat = 16
-    private let space = "penIslandArea"
+    /// Keep the focused toolset intentionally small. Pencil and monoline were
+    /// removed from the visible palette to reduce choice and visual weight.
+    private let visibleTools: [NoteToolController.Tool] = [
+        .pen, .marker, .eraser, .lasso,
+    ]
 
     var body: some View {
-        GeometryReader { geo in
-            // Only the bar itself is interactive; empty area passes touches to the
-            // canvas below (the gesture is attached before the expanding frame).
+        GeometryReader { _ in
             island
-                .offset(drag)
-                .gesture(
-                    DragGesture(coordinateSpace: .named(space))
-                        .updating($drag) { value, state, _ in state = value.translation }
-                        .onEnded { value in snap(to: value.location, in: geo.size) }
-                )
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: alignment)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
                 .padding(barPadding)
-                .animation(.spring(response: 0.35, dampingFraction: 0.8), value: tools.dock)
-        }
-        .coordinateSpace(name: space)
-    }
-
-    private var alignment: Alignment {
-        switch tools.dock {
-        case .left: return .leading
-        case .right: return .trailing
-        case .top: return .top
-        case .bottom: return .bottom
-        }
-    }
-
-    private func snap(to point: CGPoint, in size: CGSize) {
-        let dLeft = point.x
-        let dRight = size.width - point.x
-        let dTop = point.y
-        let dBottom = size.height - point.y
-        let nearest = min(dLeft, dRight, dTop, dBottom)
-        withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
-            if nearest == dLeft { tools.dock = .left }
-            else if nearest == dRight { tools.dock = .right }
-            else if nearest == dTop { tools.dock = .top }
-            else { tools.dock = .bottom }
         }
     }
 
     // MARK: Island body
 
     private var island: some View {
-        let layout = tools.dock.isVertical
-            ? AnyLayout(VStackLayout(spacing: 6))
-            : AnyLayout(HStackLayout(spacing: 6))
-        return layout {
-            grip
-            ForEach(NoteToolController.Tool.allCases) { tool in
+        HStack(spacing: 6) {
+            ForEach(visibleTools) { tool in
                 toolButton(tool)
             }
             separator
@@ -159,21 +118,8 @@ struct PenIslandView: View {
             }
         }
         .padding(8)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 22, style: .continuous)
-                .strokeBorder(NomiTheme.hairline, lineWidth: 0.5)
-        )
-        .shadow(color: .black.opacity(0.12), radius: 14, y: 6)
+        .modifier(PenGlassIsland())
         .fixedSize()
-    }
-
-    private var grip: some View {
-        Image(systemName: tools.dock.isVertical ? "line.3.horizontal" : "line.3.horizontal")
-            .rotationEffect(.degrees(tools.dock.isVertical ? 90 : 0))
-            .font(.system(size: 12, weight: .bold))
-            .foregroundStyle(.tertiary)
-            .frame(width: 30, height: 30)
     }
 
     private func toolButton(_ tool: NoteToolController.Tool) -> some View {
@@ -190,7 +136,7 @@ struct PenIslandView: View {
             Image(systemName: tool.symbol)
                 .font(.system(size: 18, weight: .medium))
                 .frame(width: 40, height: 40)
-                .foregroundStyle(selected ? Color.white : Color.primary)
+                .foregroundStyle(selected ? Color.white : Color.white.opacity(0.92))
                 .background(
                     RoundedRectangle(cornerRadius: 14, style: .continuous)
                         .fill(selected ? NomiTheme.blue : Color.clear)
@@ -202,11 +148,8 @@ struct PenIslandView: View {
 
     private var separator: some View {
         RoundedRectangle(cornerRadius: 1)
-            .fill(NomiTheme.hairline)
-            .frame(
-                width: tools.dock.isVertical ? 22 : 1,
-                height: tools.dock.isVertical ? 1 : 22
-            )
+            .fill(Color.white.opacity(0.24))
+            .frame(width: 1, height: 22)
     }
 
     /// The current color / eraser mode, tap to expand the tray.
@@ -230,10 +173,7 @@ struct PenIslandView: View {
     // MARK: Expanded tray (colors + widths)
 
     private var detailTray: some View {
-        let layout = tools.dock.isVertical
-            ? AnyLayout(VStackLayout(spacing: 10))
-            : AnyLayout(HStackLayout(spacing: 10))
-        return layout {
+        HStack(spacing: 10) {
             if tools.tool == .eraser {
                 eraserModePicker
             } else {
@@ -242,15 +182,12 @@ struct PenIslandView: View {
                 widthRow
             }
         }
-        .padding(tools.dock.isVertical ? .vertical : .horizontal, 4)
+        .padding(.horizontal, 4)
         .transition(.opacity.combined(with: .scale(scale: 0.9)))
     }
 
     private var colorRow: some View {
-        let layout = tools.dock.isVertical
-            ? AnyLayout(VStackLayout(spacing: 8))
-            : AnyLayout(HStackLayout(spacing: 8))
-        return layout {
+        HStack(spacing: 8) {
             ForEach(Array(NoteToolController.palette.enumerated()), id: \.offset) { _, c in
                 Button {
                     tools.color = c
@@ -278,17 +215,14 @@ struct PenIslandView: View {
     }
 
     private var widthRow: some View {
-        let layout = tools.dock.isVertical
-            ? AnyLayout(VStackLayout(spacing: 8))
-            : AnyLayout(HStackLayout(spacing: 8))
-        return layout {
+        HStack(spacing: 8) {
             ForEach(Array(NoteToolController.widths.enumerated()), id: \.offset) { _, w in
                 Button {
                     tools.width = w
                     if !tools.tool.isInking { tools.tool = .pen }
                 } label: {
                     Circle()
-                        .fill(Color.primary)
+                        .fill(Color.white.opacity(0.92))
                         .frame(width: dotSize(w), height: dotSize(w))
                         .frame(width: 30, height: 30)
                         .background(
@@ -304,10 +238,7 @@ struct PenIslandView: View {
     private func dotSize(_ w: CGFloat) -> CGFloat { max(6, min(22, 6 + w)) }
 
     private var eraserModePicker: some View {
-        let layout = tools.dock.isVertical
-            ? AnyLayout(VStackLayout(spacing: 6))
-            : AnyLayout(HStackLayout(spacing: 6))
-        return layout {
+        HStack(spacing: 6) {
             modeChip("Object", on: tools.eraserIsObject) { tools.eraserIsObject = true }
             modeChip("Pixel", on: !tools.eraserIsObject) { tools.eraserIsObject = false }
         }
@@ -319,11 +250,37 @@ struct PenIslandView: View {
                 .font(.system(size: 12, weight: .semibold))
                 .padding(.horizontal, 10)
                 .padding(.vertical, 6)
-                .foregroundStyle(on ? Color.white : Color.primary)
+                .foregroundStyle(Color.white)
                 .background(
                     Capsule().fill(on ? NomiTheme.blue : Color.secondary.opacity(0.15))
                 )
         }
         .buttonStyle(.plain)
+    }
+}
+
+private struct PenGlassIsland: ViewModifier {
+    private let shape = RoundedRectangle(cornerRadius: 22, style: .continuous)
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if #available(iOS 26.0, *) {
+            content
+                .glassEffect(.regular.tint(Color.black.opacity(0.62)), in: shape)
+                .shadow(color: .black.opacity(0.18), radius: 14, y: 6)
+        } else {
+            content
+                .background {
+                    shape
+                        .fill(.regularMaterial)
+                        .overlay {
+                            shape.fill(Color.black.opacity(0.56))
+                        }
+                }
+                .overlay {
+                    shape.stroke(Color.white.opacity(0.14), lineWidth: 0.5)
+                }
+                .shadow(color: .black.opacity(0.18), radius: 14, y: 6)
+        }
     }
 }
