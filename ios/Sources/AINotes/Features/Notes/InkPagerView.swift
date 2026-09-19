@@ -365,6 +365,10 @@ final class InkPageController: UIViewController, PKCanvasViewDelegate, UIScrollV
 
         canvasView.frame = view.bounds
         canvasView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+        // Paper is always white, so pin the canvas to light mode. Otherwise
+        // PencilKit's dark-mode adaptation flips black ink to white (invisible
+        // on white paper) even though the tool swatch still shows black.
+        canvasView.overrideUserInterfaceStyle = .light
         canvasView.drawingPolicy = .pencilOnly     // pencil draws; finger scrolls/zooms / drags images
         canvasView.backgroundColor = .clear
         canvasView.isOpaque = false
