@@ -1,12 +1,23 @@
 import Foundation
+import PDFKit
 
-/// Local, on-device persistence for PDF-backed notes.
-///
-/// For the MVP each project has at most one PDF-backed note. The PDF file is
-/// copied into the app's Documents directory, and the per-page PencilKit
-/// drawings are stored alongside it as JSON (page index -> base64 PKDrawing).
-/// Backend sync of PDF annotations is a follow-up.
+/// Local, on-device persistence for PDF-backed notebooks. Every notebook uses
+/// its own storage id, so imported or project-context pages never collide.
 enum PDFNoteStore {
+    enum StoreError: LocalizedError {
+        case unreadablePDF(String)
+        case noPages
+        case couldNotAssemble
+
+        var errorDescription: String? {
+            switch self {
+            case let .unreadablePDF(title): "Nomi couldn’t read \(title)."
+            case .noPages: "The selected context PDFs don’t contain any pages."
+            case .couldNotAssemble: "Nomi couldn’t assemble those PDFs into a notebook."
+            }
+        }
+    }
+
     private static func sourceKey(projectId: String) -> String {
         "pdfNoteSource-\(projectId)"
     }
@@ -50,6 +61,35 @@ enum PDFNoteStore {
         clearDrawings(key: "\(projectId)-pdf")
         setSelectedSource(sourceId, projectId: projectId)
         return dest
+    }
+
+    /// Combines project PDFs into one ordered, writable notebook background.
+    /// The copied pages are a snapshot: the notebook remains intact if a
+    /// project source is later removed.
+    @discardableResult
+    static func importPDFs(
+        _ documents: [(title: String, data: Data)],
+        storageID: String
+    ) throws -> URL {
+        let combined = PDFDocument()
+
+        for document in documents {
+            guard let pdf = PDFDocument(data: document.data) else {
+                throw StoreError.unreadablePDF(document.title)
+            }
+            for pageIndex in 0..<pdf.pageCount {
+                guard let page = pdf.page(at: pageIndex) else { continue }
+                combined.insert(page, at: combined.pageCount)
+            }
+        }
+
+        guard combined.pageCount > 0 else { throw StoreError.noPages }
+        guard let data = combined.dataRepresentation() else { throw StoreError.couldNotAssemble }
+
+        let destination = pdfURL(projectId: storageID)
+        try data.write(to: destination, options: .atomic)
+        clearDrawings(key: "\(storageID)-pdf")
+        return destination
     }
 
     static func selectedSourceID(projectId: String) -> String? {

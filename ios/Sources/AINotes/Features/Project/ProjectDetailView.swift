@@ -1,12 +1,28 @@
 import SwiftUI
 
+struct NotebookPageSource: Codable, Hashable, Identifiable {
+    enum Kind: String, Codable {
+        case projectPDF
+    }
+
+    let id: String
+    let kind: Kind
+    let title: String
+}
+
 struct ProjectNotebook: Codable, Hashable, Identifiable {
     let id: String
     var title: String
     let createdAt: Date
+    let pageSources: [NotebookPageSource]?
 
     static func primary(for project: Project) -> ProjectNotebook {
-        ProjectNotebook(id: "primary", title: "Course Notebook", createdAt: project.createdAt)
+        ProjectNotebook(
+            id: "primary",
+            title: "Course Notebook",
+            createdAt: project.createdAt,
+            pageSources: nil
+        )
     }
 
     func storageID(projectID: String) -> String {
@@ -72,12 +88,35 @@ private final class ProjectDetailModel {
         }
     }
 
-    func addNotebook(title: String) {
+    func addNotebook(title: String, sourceIDs: [String]) async throws {
+        let selectedSources = sourceIDs.compactMap { id in
+            sources.first { $0.id == id && $0.kind == "pdf" && $0.status == "ready" }
+        }
         let notebook = ProjectNotebook(
             id: UUID().uuidString.lowercased(),
             title: title,
-            createdAt: .now
+            createdAt: .now,
+            pageSources: selectedSources
+                .map {
+                    NotebookPageSource(id: $0.id, kind: .projectPDF, title: $0.title)
+                }
         )
+
+        if !selectedSources.isEmpty {
+            var documents: [(title: String, data: Data)] = []
+            for source in selectedSources {
+                let data = try await APIClient.shared.downloadSourcePDF(
+                    projectId: project.id,
+                    sourceId: source.id
+                )
+                documents.append((source.title, data))
+            }
+            try PDFNoteStore.importPDFs(
+                documents,
+                storageID: notebook.storageID(projectID: project.id)
+            )
+        }
+
         notebooks.append(notebook)
         ProjectNotebookStore.save(notebooks, projectID: project.id)
     }
@@ -115,7 +154,6 @@ struct ProjectDetailView: View {
     @State private var showRename = false
     @State private var showDetails = false
     @State private var showDeleteConfirmation = false
-    @State private var notebookName = ""
     @State private var projectName = ""
     @State private var isDeleting = false
 
@@ -165,16 +203,14 @@ struct ProjectDetailView: View {
                 notebookCount: model.notebooks.count
             )
         }
-        .alert("New Notebook", isPresented: $showNewNotebook) {
-            TextField("Notebook name", text: $notebookName)
-            Button("Cancel", role: .cancel) {}
-            Button("Create") {
-                let title = notebookName.trimmingCharacters(in: .whitespacesAndNewlines)
-                guard !title.isEmpty else { return }
-                model.addNotebook(title: title)
-            }
-        } message: {
-            Text("Give this notebook a clear name, like Lecture Notes or Midterm Practice.")
+        .sheet(isPresented: $showNewNotebook) {
+            NewNotebookSheet(
+                projectName: model.project.name,
+                sources: readyPDFSources,
+                onCreate: { title, sourceIDs in
+                    try await model.addNotebook(title: title, sourceIDs: sourceIDs)
+                }
+            )
         }
         .alert("Rename Project", isPresented: $showRename) {
             TextField("Project name", text: $projectName)
@@ -449,7 +485,6 @@ struct ProjectDetailView: View {
                     }
 
                     Button {
-                        notebookName = ""
                         showNewNotebook = true
                     } label: {
                         NewNotebookCard()
@@ -465,6 +500,10 @@ struct ProjectDetailView: View {
 
     private var projectSummary: String {
         "\(model.notebooks.count) \(model.notebooks.count == 1 ? "notebook" : "notebooks")  •  \(model.sources.count) \(model.sources.count == 1 ? "source" : "sources")"
+    }
+
+    private var readyPDFSources: [Source] {
+        model.sources.filter { $0.kind == "pdf" && $0.status == "ready" }
     }
 }
 
@@ -517,7 +556,7 @@ private struct NotebookCard: View {
                     .font(.headline)
                     .foregroundStyle(NomiTheme.ink)
                     .lineLimit(2)
-                Text("Open notebook")
+                Text(notebookSubtitle)
                     .font(.subheadline)
                     .foregroundStyle(NomiTheme.secondaryInk)
             }
@@ -538,6 +577,13 @@ private struct NotebookCard: View {
         .shadow(color: NomiTheme.ink.opacity(0.035), radius: 10, y: 4)
         .contentShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
         .accessibilityHint("Opens this notebook")
+    }
+
+    private var notebookSubtitle: String {
+        guard let count = notebook.pageSources?.count, count > 0 else {
+            return "Blank canvas"
+        }
+        return "\(count) context \(count == 1 ? "source" : "sources") included"
     }
 }
 
@@ -563,6 +609,181 @@ private struct NewNotebookCard: View {
                 .stroke(NomiTheme.blue.opacity(0.25), style: StrokeStyle(lineWidth: 1, dash: [7]))
         }
         .contentShape(RoundedRectangle(cornerRadius: 20))
+    }
+}
+
+private struct NewNotebookSheet: View {
+    @Environment(\.dismiss) private var dismiss
+
+    let projectName: String
+    let sources: [Source]
+    let onCreate: (String, [String]) async throws -> Void
+
+    @State private var title = ""
+    @State private var selectedSourceIDs: Set<String> = []
+    @State private var isCreating = false
+    @State private var errorMessage: String?
+
+    private var normalizedTitle: String {
+        title.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    HStack(spacing: 14) {
+                        Image("NomiIdle")
+                            .resizable()
+                            .interpolation(.high)
+                            .scaledToFit()
+                            .frame(width: 58, height: 58)
+                            .accessibilityHidden(true)
+
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Start with what matters.")
+                                .font(.headline)
+                            Text("Make a blank notebook or bring in pages from \(projectName).")
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    .padding(.vertical, 5)
+                }
+
+                Section("Notebook") {
+                    TextField("e.g. Lecture Notes", text: $title)
+                        .textInputAutocapitalization(.words)
+                        .submitLabel(.done)
+                }
+
+                Section {
+                    if sources.isEmpty {
+                        HStack(spacing: 12) {
+                            Image(systemName: "doc.badge.plus")
+                                .font(.title2)
+                                .foregroundStyle(NomiTheme.blue)
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text("No PDF context yet")
+                                    .font(.headline)
+                                Text("This notebook will begin with a blank page. You can add a PDF later from its page settings.")
+                                    .font(.footnote)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                        .padding(.vertical, 5)
+                    } else {
+                        ForEach(sources) { source in
+                            Button {
+                                toggle(source.id)
+                            } label: {
+                                HStack(spacing: 12) {
+                                    Image(systemName: "doc.fill")
+                                        .foregroundStyle(.red)
+                                        .frame(width: 28, height: 28)
+                                        .background(Color.red.opacity(0.09), in: RoundedRectangle(cornerRadius: 8))
+
+                                    Text(source.title)
+                                        .foregroundStyle(NomiTheme.ink)
+                                        .lineLimit(2)
+
+                                    Spacer()
+
+                                    Image(systemName: selectedSourceIDs.contains(source.id) ? "checkmark.circle.fill" : "circle")
+                                        .font(.title3)
+                                        .foregroundStyle(selectedSourceIDs.contains(source.id) ? NomiTheme.blue : Color.secondary)
+                                }
+                                .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                } header: {
+                    HStack {
+                        Text("Starting Pages")
+                        Spacer()
+                        if !sources.isEmpty {
+                            Button(selectedSourceIDs.count == sources.count ? "Clear" : "Select All") {
+                                if selectedSourceIDs.count == sources.count {
+                                    selectedSourceIDs.removeAll()
+                                } else {
+                                    selectedSourceIDs = Set(sources.map(\.id))
+                                }
+                            }
+                            .textCase(nil)
+                        }
+                    }
+                } footer: {
+                    Text("Selected PDFs are copied into the notebook in the order shown. The notebook keeps those pages even if a source is later removed from the project.")
+                }
+            }
+            .navigationTitle("New Notebook")
+            .navigationBarTitleDisplayMode(.inline)
+            .disabled(isCreating)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button {
+                        dismiss()
+                    } label: {
+                        Image(systemName: "xmark")
+                    }
+                    .accessibilityLabel("Cancel")
+                }
+
+                ToolbarItem(placement: .confirmationAction) {
+                    Button {
+                        createNotebook()
+                    } label: {
+                        if isCreating {
+                            ProgressView()
+                        } else {
+                            Image(systemName: "checkmark")
+                        }
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(NomiTheme.blue)
+                    .disabled(normalizedTitle.isEmpty || isCreating)
+                    .accessibilityLabel("Create notebook")
+                }
+            }
+            .alert(
+                "Couldn’t create notebook",
+                isPresented: Binding(
+                    get: { errorMessage != nil },
+                    set: { if !$0 { errorMessage = nil } }
+                )
+            ) {
+                Button("OK") { errorMessage = nil }
+            } message: {
+                Text(errorMessage ?? "")
+            }
+        }
+        .presentationDetents([.medium, .large])
+        .interactiveDismissDisabled(isCreating)
+    }
+
+    private func toggle(_ sourceID: String) {
+        if selectedSourceIDs.contains(sourceID) {
+            selectedSourceIDs.remove(sourceID)
+        } else {
+            selectedSourceIDs.insert(sourceID)
+        }
+    }
+
+    private func createNotebook() {
+        let orderedSelection = sources
+            .filter { selectedSourceIDs.contains($0.id) }
+            .map(\.id)
+        isCreating = true
+        Task {
+            do {
+                try await onCreate(normalizedTitle, orderedSelection)
+                dismiss()
+            } catch {
+                errorMessage = error.localizedDescription
+                isCreating = false
+            }
+        }
     }
 }
 
