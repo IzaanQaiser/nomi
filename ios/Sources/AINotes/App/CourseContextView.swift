@@ -217,12 +217,18 @@ private final class CourseContextModel {
 struct CourseContextView: View {
     let onCompleted: () -> Void
 
+    private let loadsExistingMaterials: Bool
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var model: CourseContextModel
     @State private var showImporter = false
     @State private var isFinishing = false
 
-    init(project: Project, onCompleted: @escaping () -> Void) {
+    init(
+        project: Project,
+        loadsExistingMaterials: Bool = true,
+        onCompleted: @escaping () -> Void
+    ) {
+        self.loadsExistingMaterials = loadsExistingMaterials
         _model = State(initialValue: CourseContextModel(project: project))
         self.onCompleted = onCompleted
     }
@@ -261,7 +267,11 @@ struct CourseContextView: View {
                 }
             }
         }
-        .task { await model.load() }
+        .task {
+            if loadsExistingMaterials {
+                await model.load()
+            }
+        }
     }
 
     private func hero(compact: Bool) -> some View {

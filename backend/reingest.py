@@ -1,6 +1,6 @@
-"""Re-embed every stored PDF with the current LLM provider.
+"""Re-embed every stored PDF with the configured LLM provider.
 
-Run after switching mock → gemini (old mock vectors are the wrong size):
+Run after switching providers so stored vectors match the active model:
 
     .venv/bin/python reingest.py
 """
@@ -20,6 +20,9 @@ def main() -> int:
     settings = get_settings()
     if settings.llm_provider == "gemini" and not settings.gemini_api_key:
         print("GEMINI_API_KEY is empty. Put the key in backend/.env and retry.")
+        return 1
+    if settings.llm_provider == "openai" and not settings.openai_api_key:
+        print("OPENAI_API_KEY is empty. Put the key in backend/.env and retry.")
         return 1
 
     init_db()

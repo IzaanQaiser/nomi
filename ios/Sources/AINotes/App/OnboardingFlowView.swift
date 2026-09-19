@@ -11,11 +11,15 @@ struct OnboardingFlowView: View {
     @State private var isRestoring = false
     @State private var restorationError: String?
     @State private var hasAttemptedRestore = false
+    @State private var isResumingDraft = false
 
     var body: some View {
         ZStack {
             if let project {
-                CourseContextView(project: project) {
+                CourseContextView(
+                    project: project,
+                    loadsExistingMaterials: isResumingDraft
+                ) {
                     draftProjectID = ""
                     onCompleted(project)
                 }
@@ -31,6 +35,7 @@ struct OnboardingFlowView: View {
             } else {
                 FirstLaunchView { createdProject in
                     draftProjectID = createdProject.id
+                    isResumingDraft = false
                     withAnimation(.easeInOut(duration: 0.32)) {
                         project = createdProject
                     }
@@ -93,8 +98,10 @@ struct OnboardingFlowView: View {
         defer { isRestoring = false }
 
         do {
+            isResumingDraft = true
             project = try await APIClient.shared.getProject(id: draftProjectID)
         } catch {
+            isResumingDraft = false
             restorationError = error.localizedDescription
         }
     }

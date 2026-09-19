@@ -6,8 +6,6 @@ from ...config import get_settings
 from .base import LLMProvider
 
 _BASE_URL = "https://api.openai.com/v1"
-# text-embedding-3-small default dimensionality.
-_EMBED_DIM = 1536
 
 
 class OpenAIProvider(LLMProvider):
@@ -22,14 +20,18 @@ class OpenAIProvider(LLMProvider):
 
     @property
     def embedding_dim(self) -> int:
-        return _EMBED_DIM
+        return self.settings.embed_dim
 
     def embed(self, texts: list[str], *, for_query: bool = False) -> list[list[float]]:
         with httpx.Client(timeout=60) as client:
             resp = client.post(
                 f"{_BASE_URL}/embeddings",
                 headers=self._headers,
-                json={"model": self.settings.openai_embed_model, "input": texts},
+                json={
+                    "model": self.settings.openai_embed_model,
+                    "input": texts,
+                    "dimensions": self.embedding_dim,
+                },
             )
             resp.raise_for_status()
             data = resp.json()["data"]
@@ -55,29 +57,33 @@ class OpenAIProvider(LLMProvider):
     def vision(
         self, system: str, user: str, image_base64: str, *, json_mode: bool = False
     ) -> str:
+        payload = {
+            "model": self.settings.openai_vision_model,
+            "messages": [
+                {"role": "system", "content": system},
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": user},
+                        {
+                            "type": "image_url",
+                            "image_url": {
+                                "url": f"data:image/png;base64,{image_base64}"
+                            },
+                        },
+                    ],
+                },
+            ],
+            "temperature": 0.1,
+        }
+        if json_mode:
+            payload["response_format"] = {"type": "json_object"}
+
         with httpx.Client(timeout=120) as client:
             resp = client.post(
                 f"{_BASE_URL}/chat/completions",
                 headers=self._headers,
-                json={
-                    "model": self.settings.openai_vision_model,
-                    "messages": [
-                        {"role": "system", "content": system},
-                        {
-                            "role": "user",
-                            "content": [
-                                {"type": "text", "text": user},
-                                {
-                                    "type": "image_url",
-                                    "image_url": {
-                                        "url": f"data:image/png;base64,{image_base64}"
-                                    },
-                                },
-                            ],
-                        },
-                    ],
-                    "temperature": 0.1,
-                },
+                json=payload,
             )
             resp.raise_for_status()
             return resp.json()["choices"][0]["message"]["content"]

@@ -27,8 +27,12 @@ or a VM/container platform.
 Configure these environment variables on the host:
 
 ```text
-LLM_PROVIDER=gemini
-GEMINI_API_KEY=...
+LLM_PROVIDER=openai
+OPENAI_API_KEY=...
+OPENAI_EMBED_MODEL=text-embedding-3-small
+OPENAI_CHAT_MODEL=gpt-4o-mini
+OPENAI_VISION_MODEL=gpt-4o-mini
+EMBED_DIM=768
 DATABASE_URL=postgresql://postgres.PROJECT_REF:DB_PASSWORD@POOLER_HOST:6543/postgres
 SUPABASE_URL=https://PROJECT_REF.supabase.co
 SUPABASE_SERVICE_ROLE_KEY=...
