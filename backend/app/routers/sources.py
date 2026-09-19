@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 import logging
+from urllib.parse import quote
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, Response, UploadFile
 from sqlalchemy.orm import Session
 
 from ..db import SessionLocal, get_db
@@ -165,6 +166,30 @@ def get_source(project_id: str, source_id: str, db: Session = Depends(get_db)) -
     if source is None or source.project_id != project_id:
         raise HTTPException(404, "Source not found")
     return source
+
+
+@router.get("/{source_id}/file")
+def download_source_file(
+    project_id: str, source_id: str, db: Session = Depends(get_db)
+) -> Response:
+    source = db.get(Source, source_id)
+    if source is None or source.project_id != project_id:
+        raise HTTPException(404, "Source not found")
+    if source.kind != "pdf" or not source.storage_path:
+        raise HTTPException(404, "PDF file not found")
+
+    try:
+        content = read_file(source.storage_path)
+    except Exception as exc:
+        log.exception("PDF storage download failed")
+        raise HTTPException(502, "Could not load PDF") from exc
+
+    filename = quote(source.title or "source.pdf")
+    return Response(
+        content=content,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f"inline; filename*=UTF-8''{filename}"},
+    )
 
 
 @router.delete("/{source_id}", status_code=204, response_model=None)
