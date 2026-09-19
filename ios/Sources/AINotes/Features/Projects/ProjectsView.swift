@@ -60,9 +60,7 @@ struct ProjectsView: View {
                     ScrollView {
                         LazyVGrid(columns: columns, spacing: 20) {
                             ForEach(model.projects) { project in
-                                NavigationLink {
-                                    ProjectShellView(project: project)
-                                } label: {
+                                NavigationLink(value: project) {
                                     ProjectCard(project: project)
                                 }
                                 .buttonStyle(.plain)
@@ -78,6 +76,9 @@ struct ProjectsView: View {
                 }
             }
             .navigationTitle("Notebooks")
+            .navigationDestination(for: Project.self) { project in
+                ProjectShellView(project: project)
+            }
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     Button {
@@ -168,6 +169,9 @@ private struct BackendSettingsView: View {
     @State private var urlString = AppConfig.configuredURLString
     @State private var statusMessage: String?
     @State private var isTesting = false
+#if DEBUG
+    @AppStorage("nomi.debugReplayOnboardingOnLaunch") private var replayOnboardingOnLaunch = false
+#endif
 
     var body: some View {
         NavigationStack {
@@ -204,6 +208,16 @@ private struct BackendSettingsView: View {
                     }
                     .disabled(isTesting)
                 }
+
+#if DEBUG
+                Section("Developer") {
+                    Toggle("Replay onboarding on launch", isOn: $replayOnboardingOnLaunch)
+
+                    Text("When enabled, force-quit and reopen Nomi to start from the first onboarding screen. Existing notebooks and backend data are kept.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
+#endif
             }
             .navigationTitle("Backend Settings")
             .toolbar {

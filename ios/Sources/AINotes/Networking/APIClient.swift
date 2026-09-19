@@ -108,6 +108,13 @@ actor APIClient {
         )
     }
 
+    func downloadSourcePDF(projectId: String, sourceId: String) async throws -> Data {
+        try await send(
+            try request(path: "/projects/\(projectId)/sources/\(sourceId)/file", method: "GET"),
+            session: llmSession
+        )
+    }
+
     // MARK: Notes
 
     func listNotes(projectId: String) async throws -> [Note] {

@@ -40,15 +40,18 @@ private final class CourseContextModel {
     var materials: [CourseMaterialItem] = []
     var errorMessage: String?
     var isLoading = false
+    var notebookSourceID: String?
+    var notebookSelectionInFlight: String?
 
     private var hasLoaded = false
 
     init(project: Project) {
         self.project = project
+        notebookSourceID = PDFNoteStore.selectedSourceID(projectId: project.id)
     }
 
     var hasBusyMaterials: Bool {
-        materials.contains { $0.phase.isBusy }
+        materials.contains { $0.phase.isBusy } || notebookSelectionInFlight != nil
     }
 
     var canContinue: Bool {
@@ -64,6 +67,11 @@ private final class CourseContextModel {
         do {
             let sources = try await APIClient.shared.listSources(projectId: project.id)
             materials = sources.map(material(from:))
+            if let notebookSourceID,
+               !sources.contains(where: { $0.id == notebookSourceID }) {
+                try? PDFNoteStore.removePDF(projectId: project.id)
+                self.notebookSourceID = nil
+            }
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -102,12 +110,45 @@ private final class CourseContextModel {
         materials[index].phase = .deleting
         do {
             try await APIClient.shared.deleteSource(projectId: project.id, sourceId: sourceID)
+            if notebookSourceID == sourceID {
+                try? PDFNoteStore.removePDF(projectId: project.id)
+                notebookSourceID = nil
+            }
             materials.removeAll { $0.id == item.id }
         } catch {
             if let currentIndex = materials.firstIndex(where: { $0.id == item.id }) {
                 materials[currentIndex].phase = previousPhase
             }
             errorMessage = error.localizedDescription
+        }
+    }
+
+    func toggleNotebook(_ item: CourseMaterialItem) async {
+        guard item.phase == .ready, let sourceID = item.sourceID else { return }
+        guard notebookSelectionInFlight == nil else { return }
+
+        notebookSelectionInFlight = sourceID
+        defer { notebookSelectionInFlight = nil }
+        errorMessage = nil
+
+        do {
+            if notebookSourceID == sourceID {
+                try PDFNoteStore.removePDF(projectId: project.id)
+                notebookSourceID = nil
+            } else {
+                let data = try await APIClient.shared.downloadSourcePDF(
+                    projectId: project.id,
+                    sourceId: sourceID
+                )
+                try PDFNoteStore.importPDF(
+                    data: data,
+                    projectId: project.id,
+                    sourceId: sourceID
+                )
+                notebookSourceID = sourceID
+            }
+        } catch {
+            errorMessage = "Couldn’t prepare this PDF for writing. \(error.localizedDescription)"
         }
     }
 
@@ -225,7 +266,7 @@ struct CourseContextView: View {
 
     private func hero(compact: Bool) -> some View {
         VStack(spacing: compact ? 8 : 12) {
-            HStack(spacing: 8) {
+            VStack(spacing: compact ? 5 : 7) {
                 Image(mascotAsset)
                     .resizable()
                     .interpolation(.high)
@@ -310,9 +351,13 @@ struct CourseContextView: View {
                     ScrollView {
                         LazyVStack(spacing: 0) {
                             ForEach(model.materials) { item in
-                                MaterialRow(item: item) {
-                                    Task { await model.remove(item) }
-                                }
+                                MaterialRow(
+                                    item: item,
+                                    isNotebookSource: model.notebookSourceID == item.sourceID,
+                                    isChangingNotebook: model.notebookSelectionInFlight == item.sourceID,
+                                    onToggleNotebook: { Task { await model.toggleNotebook(item) } },
+                                    onRemove: { Task { await model.remove(item) } }
+                                )
                                 .transition(.opacity.combined(with: .move(edge: .top)))
 
                                 if item.id != model.materials.last?.id {
@@ -420,6 +465,9 @@ struct CourseContextView: View {
 
 private struct MaterialRow: View {
     let item: CourseMaterialItem
+    let isNotebookSource: Bool
+    let isChangingNotebook: Bool
+    let onToggleNotebook: () -> Void
     let onRemove: () -> Void
 
     var body: some View {
@@ -449,11 +497,50 @@ private struct MaterialRow: View {
 
             Spacer(minLength: 8)
 
-            if item.phase.isBusy {
+            if item.phase == .ready {
+                Button(action: onToggleNotebook) {
+                    HStack(spacing: 6) {
+                        if isChangingNotebook {
+                            ProgressView()
+                                .controlSize(.mini)
+                                .tint(NomiTheme.blue)
+                        } else {
+                            Image(systemName: isNotebookSource ? "checkmark.circle.fill" : "circle")
+                        }
+
+                        Text(isNotebookSource ? "In notebook" : "Add to first notebook")
+                            .lineLimit(1)
+                    }
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(isNotebookSource ? NomiTheme.blue : NomiTheme.secondaryInk)
+                    .padding(.horizontal, 10)
+                    .frame(height: 30)
+                    .background(
+                        isNotebookSource ? NomiTheme.blue.opacity(0.09) : Color.clear,
+                        in: Capsule()
+                    )
+                    .overlay {
+                        Capsule()
+                            .stroke(
+                                isNotebookSource ? Color.clear : NomiTheme.hairline,
+                                lineWidth: 1
+                            )
+                    }
+                }
+                .buttonStyle(.plain)
+                .disabled(isChangingNotebook)
+                .accessibilityLabel(
+                    isNotebookSource
+                        ? "Remove \(item.title) from the notebook canvas"
+                        : "Use \(item.title) as the notebook canvas"
+                )
+            } else if item.phase.isBusy {
                 ProgressView()
                     .controlSize(.small)
                     .tint(NomiTheme.blue)
-            } else {
+            }
+
+            if !item.phase.isBusy {
                 Button(action: onRemove) {
                     Image(systemName: "xmark")
                         .font(.system(size: 13, weight: .semibold))
