@@ -255,7 +255,7 @@ struct FirstLaunchView: View {
             switch result {
             case let .success(project):
                 phase = .ready
-                try? await Task.sleep(for: .milliseconds(500))
+                try? await Task.sleep(for: .milliseconds(750))
                 onProjectCreated(project)
             case let .failure(error):
                 phase = .editing
