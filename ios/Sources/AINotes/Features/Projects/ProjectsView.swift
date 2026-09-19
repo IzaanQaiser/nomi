@@ -92,7 +92,11 @@ struct ProjectsView: View {
                     } label: { Label("New Notebook", systemImage: "plus") }
                 }
             }
-            .overlay { if model.isLoading { ProgressView() } }
+            .overlay {
+                if model.isLoading && path.isEmpty {
+                    ProgressView()
+                }
+            }
             .sheet(isPresented: $showingBackendSettings) {
                 BackendSettingsView {
                     Task { await model.load() }
