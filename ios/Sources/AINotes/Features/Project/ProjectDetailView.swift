@@ -121,6 +121,37 @@ private final class ProjectDetailModel {
         ProjectNotebookStore.save(notebooks, projectID: project.id)
     }
 
+    func renameNotebook(_ notebook: ProjectNotebook, to title: String) {
+        guard let index = notebooks.firstIndex(where: { $0.id == notebook.id }) else { return }
+        notebooks[index].title = title
+        ProjectNotebookStore.save(notebooks, projectID: project.id)
+    }
+
+    func canMoveNotebook(_ notebook: ProjectNotebook, offset: Int) -> Bool {
+        guard let index = notebooks.firstIndex(where: { $0.id == notebook.id }) else { return false }
+        return notebooks.indices.contains(index + offset)
+    }
+
+    func moveNotebook(_ notebook: ProjectNotebook, offset: Int) {
+        guard let index = notebooks.firstIndex(where: { $0.id == notebook.id }) else { return }
+        let destination = index + offset
+        guard notebooks.indices.contains(destination) else { return }
+        notebooks.swapAt(index, destination)
+        ProjectNotebookStore.save(notebooks, projectID: project.id)
+    }
+
+    func deleteNotebook(_ notebook: ProjectNotebook) {
+        guard notebooks.count > 1,
+              notebooks.contains(where: { $0.id == notebook.id })
+        else { return }
+
+        PDFNoteStore.removeLocalNotebook(
+            storageID: notebook.storageID(projectID: project.id)
+        )
+        notebooks.removeAll { $0.id == notebook.id }
+        ProjectNotebookStore.save(notebooks, projectID: project.id)
+    }
+
     func renameProject(to name: String) async -> Project? {
         isRenaming = true
         defer { isRenaming = false }
@@ -156,6 +187,10 @@ struct ProjectDetailView: View {
     @State private var showDeleteConfirmation = false
     @State private var projectName = ""
     @State private var isDeleting = false
+    @State private var notebookForInfo: ProjectNotebook?
+    @State private var notebookPendingRename: ProjectNotebook?
+    @State private var notebookPendingDeletion: ProjectNotebook?
+    @State private var notebookName = ""
 
     init(
         project: Project,
@@ -202,6 +237,44 @@ struct ProjectDetailView: View {
                 sourceCount: model.sources.count,
                 notebookCount: model.notebooks.count
             )
+        }
+        .sheet(item: $notebookForInfo) { notebook in
+            NotebookInfoSheet(projectID: model.project.id, notebook: notebook)
+        }
+        .alert(
+            "Rename Notebook",
+            isPresented: Binding(
+                get: { notebookPendingRename != nil },
+                set: { if !$0 { notebookPendingRename = nil } }
+            )
+        ) {
+            TextField("Notebook name", text: $notebookName)
+            Button("Cancel", role: .cancel) { notebookPendingRename = nil }
+            Button("Save") {
+                let title = notebookName.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard let notebook = notebookPendingRename, !title.isEmpty else { return }
+                model.renameNotebook(notebook, to: title)
+                notebookPendingRename = nil
+            }
+        } message: {
+            Text("Choose a name that makes this notebook easy to find.")
+        }
+        .confirmationDialog(
+            "Delete \(notebookPendingDeletion?.title ?? "this notebook")?",
+            isPresented: Binding(
+                get: { notebookPendingDeletion != nil },
+                set: { if !$0 { notebookPendingDeletion = nil } }
+            ),
+            titleVisibility: .visible
+        ) {
+            Button("Delete Notebook", role: .destructive) {
+                guard let notebook = notebookPendingDeletion else { return }
+                model.deleteNotebook(notebook)
+                notebookPendingDeletion = nil
+            }
+            Button("Cancel", role: .cancel) { notebookPendingDeletion = nil }
+        } message: {
+            Text("Its pages, ink, and pasted images will be permanently removed.")
         }
         .sheet(isPresented: $showNewNotebook) {
             NewNotebookSheet(
@@ -479,9 +552,50 @@ struct ProjectDetailView: View {
                         NavigationLink {
                             ProjectShellView(project: model.project, notebook: notebook)
                         } label: {
-                            NotebookCard(notebook: notebook)
+                            NotebookCard(projectID: model.project.id, notebook: notebook)
                         }
                         .buttonStyle(.plain)
+                        .contextMenu {
+                            Button {
+                                notebookName = notebook.title
+                                notebookPendingRename = notebook
+                            } label: {
+                                Label("Rename", systemImage: "pencil")
+                            }
+
+                            Button {
+                                notebookForInfo = notebook
+                            } label: {
+                                Label("Notebook Info", systemImage: "info.circle")
+                            }
+
+                            Menu {
+                                Button {
+                                    model.moveNotebook(notebook, offset: -1)
+                                } label: {
+                                    Label("Move Earlier", systemImage: "arrow.up")
+                                }
+                                .disabled(!model.canMoveNotebook(notebook, offset: -1))
+
+                                Button {
+                                    model.moveNotebook(notebook, offset: 1)
+                                } label: {
+                                    Label("Move Later", systemImage: "arrow.down")
+                                }
+                                .disabled(!model.canMoveNotebook(notebook, offset: 1))
+                            } label: {
+                                Label("Move", systemImage: "arrow.up.arrow.down")
+                            }
+
+                            Divider()
+
+                            Button(role: .destructive) {
+                                notebookPendingDeletion = notebook
+                            } label: {
+                                Label("Delete Notebook", systemImage: "trash")
+                            }
+                            .disabled(model.notebooks.count == 1)
+                        }
                     }
 
                     Button {
@@ -541,6 +655,7 @@ private struct SourcePreviewCard: View {
 }
 
 private struct NotebookCard: View {
+    let projectID: String
     let notebook: ProjectNotebook
 
     var body: some View {
@@ -580,10 +695,13 @@ private struct NotebookCard: View {
     }
 
     private var notebookSubtitle: String {
-        guard let count = notebook.pageSources?.count, count > 0 else {
-            return "Blank canvas"
+        if let count = notebook.pageSources?.count, count > 0 {
+            return "\(count) context \(count == 1 ? "source" : "sources") included"
         }
-        return "\(count) context \(count == 1 ? "source" : "sources") included"
+        if PDFNoteStore.hasPDF(projectId: notebook.storageID(projectID: projectID)) {
+            return "PDF-backed notebook"
+        }
+        return "Blank canvas"
     }
 }
 
@@ -597,8 +715,6 @@ private struct NewNotebookCard: View {
                 .background(NomiTheme.blue.opacity(0.09), in: Circle())
             Text("New Notebook")
                 .font(.headline)
-                .foregroundStyle(NomiTheme.ink)
-            Text("Start a fresh canvas")
                 .font(.subheadline)
                 .foregroundStyle(NomiTheme.secondaryInk)
         }
@@ -784,6 +900,70 @@ private struct NewNotebookSheet: View {
                 isCreating = false
             }
         }
+    }
+}
+
+private struct NotebookInfoSheet: View {
+    @Environment(\.dismiss) private var dismiss
+
+    let projectID: String
+    let notebook: ProjectNotebook
+
+    private var hasPDFPages: Bool {
+        PDFNoteStore.hasPDF(projectId: notebook.storageID(projectID: projectID))
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    HStack(spacing: 14) {
+                        Image(systemName: "book.closed.fill")
+                            .font(.title2)
+                            .foregroundStyle(NomiTheme.blue)
+                            .frame(width: 52, height: 52)
+                            .background(NomiTheme.blue.opacity(0.09), in: RoundedRectangle(cornerRadius: 14))
+
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(notebook.title)
+                                .font(.headline)
+                            Text(hasPDFPages ? "PDF-backed notebook" : "Paper notebook")
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    .padding(.vertical, 4)
+                }
+
+                Section("Details") {
+                    LabeledContent(
+                        "Created",
+                        value: notebook.createdAt.formatted(date: .abbreviated, time: .shortened)
+                    )
+                    LabeledContent(
+                        "Starting context",
+                        value: "\(notebook.pageSources?.count ?? 0)"
+                    )
+                }
+
+                if let pageSources = notebook.pageSources, !pageSources.isEmpty {
+                    Section("Pages From Project Context") {
+                        ForEach(pageSources) { source in
+                            Label(source.title, systemImage: "doc.fill")
+                                .lineLimit(2)
+                        }
+                    }
+                }
+            }
+            .navigationTitle("Notebook Info")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") { dismiss() }
+                }
+            }
+        }
+        .presentationDetents([.medium, .large])
     }
 }
 
