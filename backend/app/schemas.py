@@ -107,6 +107,7 @@ class ClassroomBoardFrame(ClassroomBoardPoint):
 class ClassroomWriteTextAction(BaseModel):
     id: str
     type: Literal["write_text"]
+    reveal_at: float = Field(ge=0.0, le=1.0)
     text: str
     position: ClassroomBoardPoint
     style: Literal["heading", "body", "equation", "label", "emphasis"] = "body"
@@ -115,6 +116,7 @@ class ClassroomWriteTextAction(BaseModel):
 class ClassroomDrawLineAction(BaseModel):
     id: str
     type: Literal["draw_line"]
+    reveal_at: float = Field(ge=0.0, le=1.0)
     start: ClassroomBoardPoint
     end: ClassroomBoardPoint
     style: Literal["solid", "dashed"] = "solid"
@@ -123,6 +125,7 @@ class ClassroomDrawLineAction(BaseModel):
 class ClassroomDrawArrowAction(BaseModel):
     id: str
     type: Literal["draw_arrow"]
+    reveal_at: float = Field(ge=0.0, le=1.0)
     start: ClassroomBoardPoint
     end: ClassroomBoardPoint
 
@@ -130,6 +133,7 @@ class ClassroomDrawArrowAction(BaseModel):
 class ClassroomDrawRectangleAction(BaseModel):
     id: str
     type: Literal["draw_rectangle"]
+    reveal_at: float = Field(ge=0.0, le=1.0)
     frame: ClassroomBoardFrame
     style: Literal["outline", "filled"] = "outline"
 
@@ -137,6 +141,7 @@ class ClassroomDrawRectangleAction(BaseModel):
 class ClassroomDrawAxesAction(BaseModel):
     id: str
     type: Literal["draw_axes"]
+    reveal_at: float = Field(ge=0.0, le=1.0)
     frame: ClassroomBoardFrame
     x_label: str = ""
     y_label: str = ""
@@ -145,6 +150,7 @@ class ClassroomDrawAxesAction(BaseModel):
 class ClassroomPlotPolylineAction(BaseModel):
     id: str
     type: Literal["plot_polyline"]
+    reveal_at: float = Field(ge=0.0, le=1.0)
     points: list[ClassroomBoardPoint]
     style: Literal["solid", "dashed"] = "solid"
 
@@ -152,12 +158,14 @@ class ClassroomPlotPolylineAction(BaseModel):
 class ClassroomHighlightAction(BaseModel):
     id: str
     type: Literal["highlight"]
+    reveal_at: float = Field(ge=0.0, le=1.0)
     frame: ClassroomBoardFrame
 
 
 class ClassroomClearBoardAction(BaseModel):
     id: str
     type: Literal["clear"]
+    reveal_at: float = Field(ge=0.0, le=1.0)
 
 
 ClassroomBoardAction = Annotated[
@@ -202,7 +210,7 @@ class ClassroomPassage(BaseModel):
 
 
 class ClassroomLessonOut(BaseModel):
-    board_protocol_version: Literal[1] = 1
+    board_protocol_version: Literal[2] = 2
     in_scope: bool
     topic: str
     title: str = ""

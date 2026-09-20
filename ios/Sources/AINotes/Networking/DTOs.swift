@@ -99,42 +99,68 @@ struct ClassroomBoardFrame: Codable, Hashable {
 struct ClassroomWriteTextAction: Codable, Hashable {
     let id: String
     let type: String
+    let revealAt: Double?
     let text: String
     let position: ClassroomBoardPoint
     let style: String
+
+    enum CodingKeys: String, CodingKey {
+        case id, type, text, position, style
+        case revealAt = "reveal_at"
+    }
 }
 
 struct ClassroomDrawLineAction: Codable, Hashable {
     let id: String
     let type: String
+    let revealAt: Double?
     let start: ClassroomBoardPoint
     let end: ClassroomBoardPoint
     let style: String
+
+    enum CodingKeys: String, CodingKey {
+        case id, type, start, end, style
+        case revealAt = "reveal_at"
+    }
 }
 
 struct ClassroomDrawArrowAction: Codable, Hashable {
     let id: String
     let type: String
+    let revealAt: Double?
     let start: ClassroomBoardPoint
     let end: ClassroomBoardPoint
+
+    enum CodingKeys: String, CodingKey {
+        case id, type, start, end
+        case revealAt = "reveal_at"
+    }
 }
 
 struct ClassroomDrawRectangleAction: Codable, Hashable {
     let id: String
     let type: String
+    let revealAt: Double?
     let frame: ClassroomBoardFrame
     let style: String
+
+    enum CodingKeys: String, CodingKey {
+        case id, type, frame, style
+        case revealAt = "reveal_at"
+    }
 }
 
 struct ClassroomDrawAxesAction: Codable, Hashable {
     let id: String
     let type: String
+    let revealAt: Double?
     let frame: ClassroomBoardFrame
     let xLabel: String
     let yLabel: String
 
     enum CodingKeys: String, CodingKey {
         case id, type, frame
+        case revealAt = "reveal_at"
         case xLabel = "x_label"
         case yLabel = "y_label"
     }
@@ -143,19 +169,37 @@ struct ClassroomDrawAxesAction: Codable, Hashable {
 struct ClassroomPlotPolylineAction: Codable, Hashable {
     let id: String
     let type: String
+    let revealAt: Double?
     let points: [ClassroomBoardPoint]
     let style: String
+
+    enum CodingKeys: String, CodingKey {
+        case id, type, points, style
+        case revealAt = "reveal_at"
+    }
 }
 
 struct ClassroomHighlightAction: Codable, Hashable {
     let id: String
     let type: String
+    let revealAt: Double?
     let frame: ClassroomBoardFrame
+
+    enum CodingKeys: String, CodingKey {
+        case id, type, frame
+        case revealAt = "reveal_at"
+    }
 }
 
 struct ClassroomClearBoardAction: Codable, Hashable {
     let id: String
     let type: String
+    let revealAt: Double?
+
+    enum CodingKeys: String, CodingKey {
+        case id, type
+        case revealAt = "reveal_at"
+    }
 }
 
 /// Closed board protocol understood by this app version. Unknown future
@@ -232,6 +276,20 @@ enum ClassroomBoardAction: Codable, Hashable, Identifiable {
     var isSupported: Bool {
         if case .unsupported = self { return false }
         return true
+    }
+
+    var revealAt: Double? {
+        switch self {
+        case let .writeText(action): action.revealAt
+        case let .drawLine(action): action.revealAt
+        case let .drawArrow(action): action.revealAt
+        case let .drawRectangle(action): action.revealAt
+        case let .drawAxes(action): action.revealAt
+        case let .plotPolyline(action): action.revealAt
+        case let .highlight(action): action.revealAt
+        case let .clear(action): action.revealAt
+        case .unsupported: nil
+        }
     }
 
     var previewDescription: String {

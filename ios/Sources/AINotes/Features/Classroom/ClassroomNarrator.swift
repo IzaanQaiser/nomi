@@ -10,6 +10,7 @@ final class ClassroomNarrator {
     private let delegate = ClassroomSpeechDelegate()
     private lazy var voice: AVSpeechSynthesisVoice? = Self.pickNativeVoice()
     private var activeUtterance: AVSpeechUtterance?
+    private var progress: ((Double) -> Void)?
     private var completion: (() -> Void)?
 
     init() {
@@ -19,13 +20,23 @@ final class ClassroomNarrator {
                 self?.finished(utterance, cancelled: cancelled)
             }
         }
+        delegate.onWillSpeak = { [weak self] utterance, range in
+            Task { @MainActor in
+                self?.willSpeak(utterance, range: range)
+            }
+        }
     }
 
     var isPaused: Bool { synthesizer.isPaused }
 
-    func speak(_ text: String, completion: @escaping () -> Void) {
+    func speak(
+        _ text: String,
+        progress: @escaping (Double) -> Void,
+        completion: @escaping () -> Void
+    ) {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else {
+            progress(1)
             completion()
             return
         }
@@ -44,7 +55,9 @@ final class ClassroomNarrator {
         utterance.preUtteranceDelay = 0.08
 
         activeUtterance = utterance
+        self.progress = progress
         self.completion = completion
+        progress(0)
         synthesizer.speak(utterance)
     }
 
@@ -63,6 +76,7 @@ final class ClassroomNarrator {
     func stop() {
         let hadActiveUtterance = activeUtterance != nil
         activeUtterance = nil
+        progress = nil
         completion = nil
         if synthesizer.isSpeaking || synthesizer.isPaused {
             synthesizer.stopSpeaking(at: .immediate)
@@ -75,10 +89,22 @@ final class ClassroomNarrator {
     private func finished(_ utterance: AVSpeechUtterance, cancelled: Bool) {
         guard activeUtterance === utterance else { return }
         activeUtterance = nil
+        let progressCallback = progress
+        progress = nil
         let callback = completion
         completion = nil
         deactivateAudioSession()
-        if !cancelled { callback?() }
+        if !cancelled {
+            progressCallback?(1)
+            callback?()
+        }
+    }
+
+    private func willSpeak(_ utterance: AVSpeechUtterance, range: NSRange) {
+        guard activeUtterance === utterance else { return }
+        let length = max(1, (utterance.speechString as NSString).length)
+        let wordStart = min(length, max(0, range.location))
+        progress?(Double(wordStart) / Double(length))
     }
 
     private func configureAudioSession() {
@@ -120,6 +146,15 @@ final class ClassroomNarrator {
 
 private final class ClassroomSpeechDelegate: NSObject, AVSpeechSynthesizerDelegate {
     var onFinish: ((AVSpeechUtterance, Bool) -> Void)?
+    var onWillSpeak: ((AVSpeechUtterance, NSRange) -> Void)?
+
+    func speechSynthesizer(
+        _ synthesizer: AVSpeechSynthesizer,
+        willSpeakRangeOfSpeechString characterRange: NSRange,
+        utterance: AVSpeechUtterance
+    ) {
+        onWillSpeak?(utterance, characterRange)
+    }
 
     func speechSynthesizer(
         _ synthesizer: AVSpeechSynthesizer,

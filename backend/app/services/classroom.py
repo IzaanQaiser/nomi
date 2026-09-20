@@ -47,14 +47,18 @@ _PREPARE_SYSTEM = (
     "a later step can play, pause, rewind, and draw. Do not invent facts. "
     "Each board action uses normalized coordinates from 0 to 1 with origin at "
     "the TOP-LEFT of the board. Actions run in array order and persist across "
-    "beats until a clear action. Use only these exact action shapes: "
-    "write_text {type,text,position:{x,y},style}; draw_line "
-    "{type,start:{x,y},end:{x,y},style}; draw_arrow "
-    "{type,start:{x,y},end:{x,y}}; draw_rectangle "
-    "{type,frame:{x,y,width,height},style}; draw_axes "
-    "{type,frame:{x,y,width,height},x_label,y_label}; plot_polyline "
-    "{type,points:[{x,y}],style}; highlight "
-    "{type,frame:{x,y,width,height}}; or clear {type}. "
+    "beats until a clear action. Every action must include reveal_at, a number "
+    "from 0 to 1 representing the fraction through that beat's speaking text "
+    "when the action should appear. Put an action at the moment its idea is "
+    "first introduced and keep reveal_at values nondecreasing in array order. "
+    "Use only these exact action shapes: write_text "
+    "{type,reveal_at,text,position:{x,y},style}; draw_line "
+    "{type,reveal_at,start:{x,y},end:{x,y},style}; draw_arrow "
+    "{type,reveal_at,start:{x,y},end:{x,y}}; draw_rectangle "
+    "{type,reveal_at,frame:{x,y,width,height},style}; draw_axes "
+    "{type,reveal_at,frame:{x,y,width,height},x_label,y_label}; plot_polyline "
+    "{type,reveal_at,points:[{x,y}],style}; highlight "
+    "{type,reveal_at,frame:{x,y,width,height}}; or clear {type,reveal_at}. "
     "write_text style must be heading, body, equation, label, or emphasis. "
     "Line and polyline style must be solid or dashed. Rectangle style must be "
     "outline or filled. Frame x/y is its top-left corner; width/height extend "
@@ -269,11 +273,13 @@ def _normalize_board_actions(raw: object, beat_index: int) -> list:
     if not isinstance(raw, list):
         return []
     actions: list = []
+    requested_reveals: list[float | None] = []
     for item in raw:
         if not isinstance(item, dict):
             continue
         action_type = str(item.get("type") or "").strip().lower()
         action_id = f"b{beat_index}-a{len(actions)}"
+        previous_count = len(actions)
 
         if action_type == "write_text":
             text = _short_text(item.get("text"), 240)
@@ -286,6 +292,7 @@ def _normalize_board_actions(raw: object, beat_index: int) -> list:
                     ClassroomWriteTextAction(
                         id=action_id,
                         type="write_text",
+                        reveal_at=0,
                         text=text,
                         position=position,
                         style=style,
@@ -301,6 +308,7 @@ def _normalize_board_actions(raw: object, beat_index: int) -> list:
                     ClassroomDrawLineAction(
                         id=action_id,
                         type="draw_line",
+                        reveal_at=0,
                         start=start,
                         end=end,
                         style=style,
@@ -311,7 +319,11 @@ def _normalize_board_actions(raw: object, beat_index: int) -> list:
             if start and end and start != end:
                 actions.append(
                     ClassroomDrawArrowAction(
-                        id=action_id, type="draw_arrow", start=start, end=end
+                        id=action_id,
+                        type="draw_arrow",
+                        reveal_at=0,
+                        start=start,
+                        end=end,
                     )
                 )
         elif action_type == "draw_rectangle":
@@ -322,7 +334,11 @@ def _normalize_board_actions(raw: object, beat_index: int) -> list:
             if frame:
                 actions.append(
                     ClassroomDrawRectangleAction(
-                        id=action_id, type="draw_rectangle", frame=frame, style=style
+                        id=action_id,
+                        type="draw_rectangle",
+                        reveal_at=0,
+                        frame=frame,
+                        style=style,
                     )
                 )
         elif action_type == "draw_axes":
@@ -332,6 +348,7 @@ def _normalize_board_actions(raw: object, beat_index: int) -> list:
                     ClassroomDrawAxesAction(
                         id=action_id,
                         type="draw_axes",
+                        reveal_at=0,
                         frame=frame,
                         x_label=_short_text(item.get("x_label"), 32),
                         y_label=_short_text(item.get("y_label"), 32),
@@ -352,7 +369,11 @@ def _normalize_board_actions(raw: object, beat_index: int) -> list:
             if len(points) >= 2:
                 actions.append(
                     ClassroomPlotPolylineAction(
-                        id=action_id, type="plot_polyline", points=points, style=style
+                        id=action_id,
+                        type="plot_polyline",
+                        reveal_at=0,
+                        points=points,
+                        style=style,
                     )
                 )
         elif action_type == "highlight":
@@ -360,14 +381,39 @@ def _normalize_board_actions(raw: object, beat_index: int) -> list:
             if frame:
                 actions.append(
                     ClassroomHighlightAction(
-                        id=action_id, type="highlight", frame=frame
+                        id=action_id,
+                        type="highlight",
+                        reveal_at=0,
+                        frame=frame,
                     )
                 )
         elif action_type == "clear":
-            actions.append(ClassroomClearBoardAction(id=action_id, type="clear"))
+            actions.append(
+                ClassroomClearBoardAction(
+                    id=action_id,
+                    type="clear",
+                    reveal_at=0,
+                )
+            )
+
+        if len(actions) > previous_count:
+            requested_reveals.append(_coordinate(item.get("reveal_at")))
 
         if len(actions) == _MAX_BOARD_ACTIONS_PER_BEAT:
             break
+
+    # Model timing is advisory. Missing timing gets a stable spread across the
+    # narration and decreasing timing is raised to preserve command ordering.
+    last_reveal = 0.0
+    denominator = max(1, len(actions) - 1)
+    for index, action in enumerate(actions):
+        fallback = 0.08 + (0.84 * index / denominator)
+        requested = requested_reveals[index]
+        reveal_at = min(
+            0.96, max(last_reveal, requested if requested is not None else fallback)
+        )
+        action.reveal_at = round(reveal_at, 3)
+        last_reveal = reveal_at
     return actions
 
 

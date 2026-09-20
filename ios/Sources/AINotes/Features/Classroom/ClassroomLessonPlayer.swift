@@ -17,6 +17,7 @@ final class ClassroomLessonPlayer {
 
     private(set) var lesson: ClassroomLesson?
     private(set) var currentBeatIndex = 0
+    private(set) var narrationProgress = 0.0
     private(set) var playbackState: PlaybackState = .ready
 
     private let narrator = ClassroomNarrator()
@@ -26,22 +27,28 @@ final class ClassroomLessonPlayer {
         return lesson.beats[currentBeatIndex]
     }
 
-    /// All beats that should already be represented on Nomi's board.
-    /// A future renderer can rebuild its layer from this array after a rewind.
-    var visibleBeats: [ClassroomLessonBeat] {
-        guard let lesson, !lesson.beats.isEmpty else { return [] }
-        return Array(lesson.beats.prefix(currentBeatIndex + 1))
-    }
+    /// Ordered command stream revealed at the exact current playback position.
+    /// Replaying it from an empty Nomi layer reconstructs pause and seek state.
+    var revealedBoardActions: [ClassroomBoardAction] {
+        guard let lesson, lesson.beats.indices.contains(currentBeatIndex) else { return [] }
 
-    /// Ordered command stream from lesson start through the current beat.
-    /// Replaying this stream from an empty Nomi layer reconstructs the board.
-    var boardActionsThroughCurrentBeat: [ClassroomBoardAction] {
-        visibleBeats.flatMap(\.board.actions).filter(\.isSupported)
+        var result = lesson.beats
+            .prefix(currentBeatIndex)
+            .flatMap(\.board.actions)
+            .filter(\.isSupported)
+
+        let currentActions = lesson.beats[currentBeatIndex].board.actions.filter(\.isSupported)
+        for (index, action) in currentActions.enumerated()
+            where revealProgress(for: action, index: index, count: currentActions.count)
+                <= narrationProgress + 0.000_1 {
+            result.append(action)
+        }
+        return result
     }
 
     /// Current semantic board contents after applying explicit clear actions.
     var resolvedBoardActions: [ClassroomBoardAction] {
-        boardActionsThroughCurrentBeat.reduce(into: []) { result, action in
+        revealedBoardActions.reduce(into: []) { result, action in
             if action.isClear {
                 result.removeAll(keepingCapacity: true)
             } else {
@@ -53,7 +60,7 @@ final class ClassroomLessonPlayer {
     var progress: Double {
         guard let lesson, !lesson.beats.isEmpty else { return 0 }
         if playbackState == .completed { return 1 }
-        return Double(currentBeatIndex + 1) / Double(lesson.beats.count)
+        return (Double(currentBeatIndex) + narrationProgress) / Double(lesson.beats.count)
     }
 
     var positionLabel: String {
@@ -72,6 +79,7 @@ final class ClassroomLessonPlayer {
         narrator.stop()
         self.lesson = lesson
         currentBeatIndex = 0
+        narrationProgress = 0
         playbackState = .ready
     }
 
@@ -79,6 +87,7 @@ final class ClassroomLessonPlayer {
         narrator.stop()
         lesson = nil
         currentBeatIndex = 0
+        narrationProgress = 0
         playbackState = .ready
     }
 
@@ -111,6 +120,7 @@ final class ClassroomLessonPlayer {
         guard canMoveBackward else { return }
         narrator.stop()
         currentBeatIndex -= 1
+        narrationProgress = 0
         playbackState = .paused
     }
 
@@ -122,6 +132,7 @@ final class ClassroomLessonPlayer {
         let wasPlaying = playbackState == .playing
         narrator.stop()
         currentBeatIndex += 1
+        narrationProgress = 0
         playbackState = wasPlaying ? .playing : .paused
         if wasPlaying { narrateCurrentBeat() }
     }
@@ -130,6 +141,7 @@ final class ClassroomLessonPlayer {
         guard lesson?.beats.isEmpty == false else { return }
         narrator.stop()
         currentBeatIndex = 0
+        narrationProgress = 0
         playbackState = .playing
         narrateCurrentBeat()
     }
@@ -145,7 +157,12 @@ final class ClassroomLessonPlayer {
     private func narrateCurrentBeat() {
         guard let beat = currentBeat else { return }
         let expectedIndex = currentBeatIndex
-        narrator.speak(beat.speaking) { [weak self] in
+        narrator.speak(beat.speaking) { [weak self] progress in
+            guard let self,
+                  self.playbackState == .playing,
+                  self.currentBeatIndex == expectedIndex else { return }
+            self.narrationProgress = min(1, max(self.narrationProgress, progress))
+        } completion: { [weak self] in
             guard let self,
                   self.playbackState == .playing,
                   self.currentBeatIndex == expectedIndex else { return }
@@ -157,6 +174,7 @@ final class ClassroomLessonPlayer {
         guard playbackState == .playing else { return }
         if canMoveForward {
             currentBeatIndex += 1
+            narrationProgress = 0
             narrateCurrentBeat()
         } else {
             complete()
@@ -165,6 +183,19 @@ final class ClassroomLessonPlayer {
 
     private func complete() {
         narrator.stop()
+        narrationProgress = 1
         playbackState = .completed
+    }
+
+    private func revealProgress(
+        for action: ClassroomBoardAction,
+        index: Int,
+        count: Int
+    ) -> Double {
+        if let revealAt = action.revealAt, revealAt.isFinite {
+            return min(1, max(0, revealAt))
+        }
+        guard count > 1 else { return 0.08 }
+        return 0.08 + (0.84 * Double(index) / Double(count - 1))
     }
 }

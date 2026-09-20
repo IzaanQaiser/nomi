@@ -525,12 +525,10 @@ private struct ClassroomBoardView: View {
                         .foregroundStyle(NomiTheme.ink)
 
                     Group {
-                        if player.resolvedBoardActions.isEmpty {
+                        if player.resolvedBoardActions.isEmpty && beat.board.actions.isEmpty {
                             legacyBoardFallback(for: beat)
                         } else {
                             ClassroomBoardRenderer(actions: player.resolvedBoardActions)
-                                .id(player.resolvedBoardActions.map(\.id).joined(separator: "|"))
-                                .transition(.opacity)
                         }
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -549,13 +547,11 @@ private struct ClassroomBoardView: View {
                         )
                 }
                 .padding(28)
-                .id(beat.id)
             } else {
                 ProgressView()
                     .tint(NomiTheme.blue)
             }
         }
-        .animation(.easeInOut(duration: 0.22), value: player.currentBeatIndex)
         .accessibilityElement(children: .combine)
         .accessibilityLabel("Lesson board")
         .accessibilityValue(boardValue)

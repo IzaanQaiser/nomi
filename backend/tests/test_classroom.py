@@ -66,6 +66,50 @@ class BoardProtocolTests(unittest.TestCase):
         self.assertEqual(actions[0].position.y, 1.0)
         self.assertEqual(actions[0].style, "body")
         self.assertEqual(actions[1].type, "draw_arrow")
+        self.assertEqual(actions[0].reveal_at, 0.08)
+        self.assertEqual(actions[1].reveal_at, 0.92)
+
+    def test_reveal_timing_is_clamped_and_kept_in_action_order(self):
+        beats = _normalize_beats(
+            [
+                {
+                    "title": "Timed board",
+                    "speaking": "First draw the axes, then label the response.",
+                    "board": {
+                        "actions": [
+                            {
+                                "type": "draw_axes",
+                                "reveal_at": 0.7,
+                                "frame": {
+                                    "x": 0.1,
+                                    "y": 0.1,
+                                    "width": 0.6,
+                                    "height": 0.6,
+                                },
+                            },
+                            {
+                                "type": "write_text",
+                                "reveal_at": 0.2,
+                                "text": "response",
+                                "position": {"x": 0.75, "y": 0.7},
+                            },
+                            {
+                                "type": "highlight",
+                                "reveal_at": 9,
+                                "frame": {
+                                    "x": 0.7,
+                                    "y": 0.65,
+                                    "width": 0.2,
+                                    "height": 0.1,
+                                },
+                            },
+                        ]
+                    },
+                }
+            ]
+        )
+        actions = beats[0].board.actions
+        self.assertEqual([action.reveal_at for action in actions], [0.7, 0.7, 0.96])
 
     def test_invalid_geometry_is_discarded(self):
         beats = _normalize_beats(
@@ -163,7 +207,7 @@ class ClassroomServiceTests(unittest.TestCase):
         self.assertTrue(lesson.sources)
         self.assertTrue(lesson.passages)
         self.assertEqual(lesson.grounding, "full")
-        self.assertEqual(lesson.board_protocol_version, 1)
+        self.assertEqual(lesson.board_protocol_version, 2)
         self.assertTrue(all(beat.speaking for beat in lesson.beats))
         self.assertTrue(any(beat.board.actions for beat in lesson.beats))
 
