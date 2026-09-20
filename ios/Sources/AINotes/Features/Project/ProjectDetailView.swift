@@ -443,9 +443,15 @@ struct ProjectDetailView: View {
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .padding(.vertical, 6)
                     } else {
-                        ForEach(model.sources.prefix(2)) { source in
-                            ContextSourceRow(source: source)
+                        ScrollView(.vertical, showsIndicators: model.sources.count > 3) {
+                            LazyVStack(spacing: 12) {
+                                ForEach(model.sources) { source in
+                                    ContextSourceRow(source: source)
+                                }
+                            }
                         }
+                        .frame(height: contextSourceListHeight)
+                        .scrollBounceBehavior(.basedOnSize)
                     }
 
                     Button { showSources = true } label: {
@@ -467,6 +473,13 @@ struct ProjectDetailView: View {
             RoundedRectangle(cornerRadius: 20, style: .continuous)
                 .stroke(NomiTheme.hairline, lineWidth: 1)
         }
+    }
+
+    private var contextSourceListHeight: CGFloat {
+        let visibleRows = min(model.sources.count, 3)
+        let rowHeight = CGFloat(visibleRows) * 52
+        let spacing = CGFloat(max(0, visibleRows - 1)) * 12
+        return rowHeight + spacing
     }
 
     private var examPrepCard: some View {
