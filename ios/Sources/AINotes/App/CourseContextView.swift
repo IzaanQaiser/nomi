@@ -284,7 +284,7 @@ struct CourseContextView: View {
         VStack(spacing: compact ? 8 : 12) {
             VStack(spacing: compact ? 5 : 7) {
                 NomiView(pose: NomiPose(assetName: mascotAsset))
-                    .frame(width: compact ? 76 : 112, height: compact ? 76 : 112)
+                    .frame(width: compact ? 96 : 150, height: compact ? 96 : 150)
                     .id(mascotAsset)
                     .transition(.opacity)
                     .accessibilityHidden(true)
