@@ -16,7 +16,9 @@ final class VoiceListener: NSObject {
     var onError: ((String) -> Void)?
 
     private let silenceGap: TimeInterval = 1.4
-    private let emptyTimeout: TimeInterval = 2.6
+    /// How long we wait for the user to start talking before handing back "".
+    /// Longer for conversation follow-ups so the mic doesn't close too soon.
+    var emptyTimeout: TimeInterval = 2.6
 
     private let recognizer = SFSpeechRecognizer(locale: Locale(identifier: "en-US"))
     private var audioEngine = AVAudioEngine()

@@ -345,8 +345,8 @@ struct NotesView: View {
                 HStack(spacing: 2) {
                     if !examController.isActive {
                         notebookActionButton(
-                            shadowing.isListening ? "Stop listening" : "Talk to tutor",
-                            systemImage: shadowing.isListening ? "mic.fill" : "mic.slash.fill"
+                            shadowing.isMicActive ? "End conversation" : "Talk to tutor",
+                            systemImage: shadowing.isMicActive ? "mic.fill" : "mic.slash.fill"
                         ) {
                             shadowing.toggleVoiceMute()
                         }

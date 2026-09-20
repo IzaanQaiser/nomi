@@ -24,11 +24,20 @@ final class ShadowingEngine: ObservableObject {
     @Published private(set) var state: State = .off
     var isEnabled: Bool { if case .off = state { return false } else { return true } }
 
-    /// True while a push-to-talk listen turn is active (toolbar mic icon).
+    /// True while a push-to-talk listen turn is active (drives the audio bars).
     var isListening: Bool {
         if case .listening = state { return true }
         return false
     }
+
+    /// Continuous conversation: once the user unmutes, the mic stays "on" across
+    /// turns (listen → reply → listen again) until they mute. Drives the toolbar
+    /// mic icon so it reads as active even while thinking/speaking.
+    @Published private(set) var conversationMode = false
+    var isMicActive: Bool { conversationMode }
+    /// Debounces rapid recognition errors so a genuine failure loop stops the
+    /// conversation instead of restarting forever.
+    private var lastVoiceError = Date.distantPast
 
     /// Set by the canvas layer: renders the active page (ink + background) to an
     /// image no wider than `maxWidth` points.
@@ -121,6 +130,7 @@ final class ShadowingEngine: ObservableObject {
             state = .idle
             startTimer()
         } else {
+            conversationMode = false
             voice.cancel()
             speaker.stopSpeaking(at: .immediate)
             state = .off
@@ -128,13 +138,26 @@ final class ShadowingEngine: ObservableObject {
         }
     }
 
-    /// Toolbar mic: start a push-to-talk turn, or stop if already listening.
+    /// Toolbar mic: open a continuous conversation, or end it (mute).
     func toggleVoiceMute() {
-        if isListening {
-            cancelListening()
+        if conversationMode {
+            stopConversation()
         } else {
-            startListening()
+            startConversation()
         }
+    }
+
+    private func startConversation() {
+        conversationMode = true
+        startListening()
+    }
+
+    private func stopConversation() {
+        conversationMode = false
+        voice.cancel()
+        speaker.stopSpeaking(at: .immediate)
+        inFlight = false
+        if isEnabled { state = .idle }
     }
 
     func dismissHint() {
@@ -172,8 +195,22 @@ final class ShadowingEngine: ObservableObject {
             self?.submitUtterance(text)
         }
         voice.onError = { [weak self] message in
-            self?.inFlight = false
-            self?.state = .reply(message)
+            guard let self else { return }
+            self.inFlight = false
+            if self.conversationMode {
+                // Keep waiting through a transient hiccup, but bail out of a rapid
+                // error loop so we don't spin forever.
+                let now = Date()
+                if now.timeIntervalSince(self.lastVoiceError) < 3 {
+                    self.conversationMode = false
+                    self.state = .reply(message)
+                } else {
+                    self.lastVoiceError = now
+                    self.startListening()
+                }
+            } else {
+                self.state = .reply(message)
+            }
         }
         Task { [weak self] in
             guard let self else { return }
@@ -183,9 +220,14 @@ final class ShadowingEngine: ObservableObject {
                 return
             }
             // Let TTS / playback fully release the session before recording.
+            // A little extra settle time makes the auto-reopen after Nomi speaks
+            // reliable (too eager a restart used to kill speech recognition).
             try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
-            try? await Task.sleep(nanoseconds: 200_000_000)
+            try? await Task.sleep(nanoseconds: 350_000_000)
             do {
+                // In a conversation the mic just waits for you to start talking;
+                // once you speak, the silence gap ends the turn.
+                self.voice.emptyTimeout = self.conversationMode ? 45.0 : 2.6
                 try self.voice.start()
                 self.inFlight = true
                 self.state = .listening("")
@@ -199,7 +241,12 @@ final class ShadowingEngine: ObservableObject {
     private func speechDidFinish() {
         switch state {
         case .hint, .reply:
-            state = isEnabled ? .idle : .off
+            if conversationMode {
+                // Keep the mic open so the student can just ask a follow-up.
+                startListening()
+            } else {
+                state = isEnabled ? .idle : .off
+            }
         default:
             break
         }
@@ -252,6 +299,12 @@ final class ShadowingEngine: ObservableObject {
     }
 
     private func submitUtterance(_ text: String) {
+        // Nothing said yet: in a conversation just keep listening (wait for the
+        // student to start talking) instead of pinging the backend.
+        if text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, conversationMode {
+            startListening()
+            return
+        }
         guard let image = snapshotProvider?(1024), let png = image.pngData() else {
             inFlight = false
             state = isEnabled ? .idle : .off

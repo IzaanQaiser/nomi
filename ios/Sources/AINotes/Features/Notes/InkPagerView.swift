@@ -181,8 +181,10 @@ struct InkPagerView: UIViewControllerRepresentable {
             canvas.tool = parent.tools.pkTool
             refreshUndoState()
             parent.shadowing?.setActivePage(page.pageIndex)
-            parent.shadowing?.snapshotProvider = { [weak page] maxWidth in
-                page?.snapshot(maxWidth: maxWidth)
+            // Read the *current* active page (a captured page could go stale when
+            // the page controller is recycled, silently returning no scan).
+            parent.shadowing?.snapshotProvider = { [weak self] maxWidth in
+                self?.activePage?.snapshot(maxWidth: maxWidth)
             }
         }
 
