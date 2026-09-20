@@ -72,9 +72,9 @@ class SlideProtocolTests(unittest.TestCase):
                         "title": "G(s)",
                         "equation": "G(s) = Y(s)/U(s)",
                         "bullets": [
-                            "G(s) is output over input.",
-                            "It is the compact model of the plant.",
-                            "Later slides will use this same G(s).",
+                            "G(s) is the output divided by the input in the s-domain.",
+                            "It is the compact model of the plant used in later slides.",
+                            "Later slides will use this same G(s) when we add a compensator.",
                         ],
                     },
                 },
@@ -183,9 +183,9 @@ class SlideProtocolTests(unittest.TestCase):
                         "title": "Loop",
                         "mermaid": "```mermaid\nflowchart LR\n  A --> B\n```",
                         "bullets": [
-                            "A feeds B.",
-                            "Read left to right.",
-                            "This is the smallest useful picture of the idea.",
+                            "Signal A feeds signal B in this smallest useful picture.",
+                            "Read the diagram from left to right, one arrow at a time.",
+                            "This is the smallest useful picture of the idea in the notes.",
                         ],
                     },
                 },
@@ -223,9 +223,9 @@ class SlideProtocolTests(unittest.TestCase):
                         "title": "G(s)",
                         "equation": "G(s) = K / s",
                         "bullets": [
-                            "K sets the gain.",
-                            "The pole at the origin is an integrator.",
-                            "This is the plant we will compensate.",
+                            "K sets the gain that scales how strongly the plant responds.",
+                            "The pole at the origin is an integrator in this plant model.",
+                            "This is the plant we will compensate in the next few slides.",
                         ],
                     },
                 },
@@ -237,9 +237,9 @@ class SlideProtocolTests(unittest.TestCase):
                         "title": "Check",
                         "question": "What does K do?",
                         "bullets": [
-                            "Think about speed of response.",
-                            "Think about how large the output gets.",
-                            "Do not invent a number the notes never gave.",
+                            "Think about speed of response, not just the symbol on the page.",
+                            "Think about how large the output gets when K increases.",
+                            "Do not invent a number the notes never actually gave you.",
                         ],
                     },
                 },
@@ -251,11 +251,70 @@ class SlideProtocolTests(unittest.TestCase):
         self.assertGreaterEqual(len(beats[0].slide.bullets), 3)
         self.assertGreaterEqual(len(beats[1].slide.bullets), 3)
 
+    def test_label_bullets_become_full_sentences(self):
+        beats = _normalize_beats(
+            [
+                {
+                    "title": "Loop",
+                    "speaking": "Walk through the loop using the notes.",
+                    "slide": {
+                        "layout": "concept",
+                        "title": "The Feedback Loop",
+                        "bullets": [
+                            "Input: Desired output",
+                            "Output: Measured output",
+                            "Error: Difference between input and output",
+                        ],
+                    },
+                }
+            ]
+        )
+        self.assertEqual(len(beats), 1)
+        bullets = beats[0].slide.bullets
+        self.assertGreaterEqual(len(bullets), 3)
+        for bullet in bullets:
+            self.assertGreaterEqual(len(bullet.split()), 6)
+            self.assertTrue(bullet.endswith("."))
+            self.assertFalse(
+                bullet.lower().startswith(("input:", "output:", "error:"))
+            )
+        self.assertTrue(any("desired output" in bullet.lower() for bullet in bullets))
+
+    def test_mermaid_node_ids_with_spaces_are_repaired(self):
+        beats = _normalize_beats(
+            [
+                {
+                    "title": "The picture",
+                    "speaking": "A loop makes the relationship visible.",
+                    "slide": {
+                        "layout": "diagram",
+                        "title": "Loop",
+                        "mermaid": (
+                            "flowchart LR\n"
+                            "  Desired output --> Plant --> Measured output"
+                        ),
+                        "bullets": [
+                            "Read the diagram from left to right, starting at the input.",
+                            "The plant sits between the commanded input and the measured output.",
+                            "A later path can send that output back so the loop can compare.",
+                        ],
+                    },
+                }
+            ]
+        )
+        self.assertEqual(len(beats), 1)
+        mermaid = beats[0].slide.mermaid
+        self.assertTrue(mermaid.startswith("flowchart"))
+        self.assertNotRegex(mermaid, r"(?m)^\s*Desired output -->")
+        self.assertIn("-->", mermaid)
+        self.assertIn('["Desired output"]', mermaid)
+        self.assertIn('["Measured output"]', mermaid)
+
     def test_every_layout_keeps_teaching_bullets(self):
         bullets = [
-            "First teaching point from the notes.",
-            "Second teaching point with a consequence.",
-            "Third teaching point the student can reuse.",
+            "First teaching point from the notes, written as a full sentence.",
+            "Second teaching point with a consequence the student can reuse.",
+            "Third teaching point that still stands if the picture is gone.",
         ]
         beats = _normalize_beats(
             [
@@ -347,7 +406,7 @@ class SlideProtocolTests(unittest.TestCase):
         self.assertLessEqual(len(beats[0].slide.title), 80)
         self.assertLessEqual(len(beats[0].slide.body), 400)
         self.assertEqual(len(beats[0].slide.bullets), 6)
-        self.assertLessEqual(len(beats[0].slide.bullets[0]), 180)
+        self.assertLessEqual(len(beats[0].slide.bullets[0]), 220)
 
 
 class ClassroomServiceTests(unittest.TestCase):

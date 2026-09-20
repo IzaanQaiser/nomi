@@ -40,8 +40,11 @@ _PREPARE_SYSTEM = (
     "details. Stay grounded in the retrieved sources and do not invent facts. "
     "Each beat has spoken narration (`speaking`) and a visual slide. "
     "EVERY slide MUST include 3 to 5 teaching bullets in `slide.bullets`. "
-    "Those bullets are the student's notes: specific, sourced, and useful on "
-    "their own. This includes title, concept, equation, diagram, steps, and "
+    "Each bullet is one complete sentence of at least 12 words, with a verb, "
+    "ending in a period, that a student could copy as notes. Never use labels, "
+    "noun stubs, or colon fragments such as 'Input: Desired output'. Write "
+    "the idea out: 'The input is the desired output the loop is trying to "
+    "reach.' This includes title, concept, equation, diagram, steps, and "
     "checkpoint slides. Title-slide bullets preview what the lesson will cover. "
     "Equation-slide bullets explain what the symbols mean and when to use it. "
     "Diagram-slide bullets say what to read from the picture. Checkpoint "
@@ -50,11 +53,11 @@ _PREPARE_SYSTEM = (
     "paste the narration verbatim into the bullets. Keep titles short. Choose "
     "layouts intentionally: title, concept, equation, bullets, steps, diagram, "
     "or checkpoint. Use a diagram only when a relationship genuinely needs a "
-    "picture. Mermaid must be simple and robust: prefer flowchart, "
-    "stateDiagram, or sequenceDiagram. Avoid experimental syntax and dense "
-    "diagrams. Produce Mermaid syntax only, never SVG, HTML, or coordinates. "
-    "Produce no x/y positions and no board commands. Include a useful "
-    "checkpoint beat when appropriate. "
+    "picture. Mermaid must be simple and robust: prefer flowchart LR or TD. "
+    "Node IDs must be CamelCase with no spaces. Put labels in quotes, e.g. "
+    "A[\"Desired output\"] --> B[\"Measured output\"]. No subgraphs, classDef, "
+    "click, style, HTML, SVG, or coordinates. At most 8 nodes. Produce "
+    "Mermaid syntax only. Include a useful checkpoint beat when appropriate. "
     "Respond with STRICT JSON only, no prose and no code fences, matching:\n"
     '{"in_scope": bool, "topic": str, "title": str, "reason": str|null, '
     '"summary": str, "beats": [{"title": str, "speaking": str, '
@@ -83,8 +86,9 @@ _MIN_BEATS = 4
 _MAX_BEATS = 8
 _MIN_BULLETS = 3
 _MAX_BULLETS = 6
+_MIN_BULLET_WORDS = 6
 _MAX_STEPS = 8
-_MAX_BULLET_CHARS = 180
+_MAX_BULLET_CHARS = 220
 _MAX_STEP_CHARS = 160
 _MAX_TITLE_CHARS = 80
 _MAX_SUBTITLE_CHARS = 120
@@ -108,6 +112,16 @@ _MERMAID_START_RE = re.compile(
 )
 _FORBIDDEN_VISUAL_RE = re.compile(
     r"<(svg|html|body|script|iframe)\b", re.IGNORECASE
+)
+_LABEL_BULLET_RE = re.compile(
+    r"^([A-Za-z][A-Za-z0-9+\-/\s()]{0,28}):\s+(\S.*)$"
+)
+_MERMAID_ARROW_RE = re.compile(
+    r"(\s*(?:-->|---|==>|-\.->|<-->|o--|x--|--o|--x)\s*(?:\|[^|]*\|\s*)?)"
+)
+_MERMAID_DROP_LINE_RE = re.compile(
+    r"^\s*(classDef|click|style|linkStyle|class|accTitle|accDescr)\b",
+    re.IGNORECASE,
 )
 _GENERIC_HEADINGS = {
     "contents",
@@ -315,12 +329,128 @@ def _normalize_mermaid(value: object) -> str:
     first_line = next((line.strip() for line in text.splitlines() if line.strip()), "")
     if not _MERMAID_START_RE.match(first_line):
         return ""
+    return _repair_mermaid(text)
+
+
+def _repair_mermaid(text: str) -> str:
+    lines = text.splitlines()
+    if not lines:
+        return text
+    header = next((line for line in lines if line.strip()), "")
+    kind = header.strip().split()[0].lower() if header else ""
+    repaired: list[str] = []
+    seen_header = False
+    for line in lines:
+        if not seen_header:
+            repaired.append(line)
+            if line.strip():
+                seen_header = True
+            continue
+        if kind in {"flowchart", "graph"}:
+            if _MERMAID_DROP_LINE_RE.match(line):
+                continue
+            repaired.append(_repair_flowchart_line(line))
+        else:
+            repaired.append(line)
+    return "\n".join(repaired)
+
+
+def _repair_flowchart_line(line: str) -> str:
+    stripped = line.strip()
+    if not stripped or stripped.startswith("%%"):
+        return line
+    indent = line[: len(line) - len(line.lstrip())]
+    parts = _MERMAID_ARROW_RE.split(stripped)
+    repaired: list[str] = []
+    for index, part in enumerate(parts):
+        if index % 2 == 1:
+            repaired.append(part)
+        elif part.strip():
+            repaired.append(_repair_flowchart_node(part.strip()))
+        else:
+            repaired.append(part)
+    return indent + "".join(repaired)
+
+
+def _repair_flowchart_node(token: str) -> str:
+    token = token.strip()
+    if not token:
+        return token
+    token = _quote_shape_labels(token)
+    if re.search(r"\s", token) and not re.search(r"[\[\(\{]", token):
+        return f"{_safe_node_id(token)}[{_quoted_label(token)}]"
+    return token
+
+
+def _quote_shape_labels(token: str) -> str:
+    def replacer(match: re.Match[str]) -> str:
+        inner = match.group(1).strip()
+        if inner.startswith(("\"", "'")):
+            return match.group(0)
+        if re.search(r"[\s:()/,=]", inner):
+            return f"[{_quoted_label(inner)}]"
+        return match.group(0)
+
+    return re.sub(r"\[([^\[\]]+)\]", replacer, token)
+
+
+def _safe_node_id(label: str) -> str:
+    ident = re.sub(r"[^A-Za-z0-9]+", "_", label).strip("_")
+    ident = re.sub(r"_+", "_", ident)
+    if not ident:
+        ident = "N"
+    if ident[0].isdigit():
+        ident = f"N_{ident}"
+    return ident[:48]
+
+
+def _quoted_label(text: str) -> str:
+    return '"' + text.replace('"', "'") + '"'
+
+
+def _as_sentence(value: str) -> str:
+    text = value.strip().rstrip(" -;:,")
+    if text and text[-1] not in ".!?":
+        text += "."
     return text
+
+
+def _expand_label_bullet(text: str) -> str:
+    match = _LABEL_BULLET_RE.match(text.strip().rstrip("."))
+    if not match:
+        return _as_sentence(text)
+    term = match.group(1).strip()
+    rest = match.group(2).strip().rstrip(".")
+    if not rest:
+        return _as_sentence(text)
+    rest_text = rest[0].lower() + rest[1:] if rest[0].isupper() and (
+        len(rest) == 1 or not rest[1].isupper()
+    ) else rest
+    if not rest_text.startswith(("the ", "a ", "an ")):
+        rest_text = "the " + rest_text
+    return (
+        f"The {term.lower()} is {rest_text}, which is the role it plays "
+        "in this part of the lesson."
+    )
+
+
+def _is_teaching_sentence(text: str) -> bool:
+    if not text or _LABEL_BULLET_RE.match(text.strip().rstrip(".")):
+        return False
+    return len(text.split()) >= _MIN_BULLET_WORDS and len(text) >= 32
 
 
 def _sentence_list(value: str, *, max_items: int, max_len: int) -> list[str]:
     parts = re.split(r"(?<=[.!?])\s+", value)
     return _string_list(parts, max_items=max_items, max_len=max_len)
+
+
+def _lengthen_bullet(text: str) -> str:
+    sentence = _expand_label_bullet(text)
+    if not _is_teaching_sentence(sentence):
+        stem = sentence[:-1] if sentence.endswith((".", "!", "?")) else sentence
+        sentence = stem + ", and this is a point to keep from the notes."
+    return _short_text(sentence, _MAX_BULLET_CHARS)
 
 
 def _ensure_teaching_bullets(
@@ -332,27 +462,42 @@ def _ensure_teaching_bullets(
     callout: str,
     equation: str,
     question: str,
+    speaking: str = "",
 ) -> list[str]:
-    if len(bullets) >= _MIN_BULLETS:
-        return bullets[:_MAX_BULLETS]
-    extras: list[str] = list(bullets)
+    extras = [
+        item
+        for item in (_lengthen_bullet(bullet) for bullet in bullets)
+        if _is_teaching_sentence(item)
+    ][:_MAX_BULLETS]
+    if len(extras) >= _MIN_BULLETS:
+        return extras
     for candidate in (
         steps,
         _sentence_list(body, max_items=_MAX_BULLETS, max_len=_MAX_BULLET_CHARS),
         _sentence_list(caption, max_items=_MAX_BULLETS, max_len=_MAX_BULLET_CHARS),
         _sentence_list(callout, max_items=_MAX_BULLETS, max_len=_MAX_BULLET_CHARS),
+        _sentence_list(speaking, max_items=_MAX_BULLETS, max_len=_MAX_BULLET_CHARS),
         [equation] if equation else [],
         [question] if question else [],
     ):
-        extras = _string_list(
-            extras + candidate, max_items=_MAX_BULLETS, max_len=_MAX_BULLET_CHARS
-        )
-        if len(extras) >= _MIN_BULLETS:
-            return extras
-    return extras
+        for item in candidate:
+            sentence = _lengthen_bullet(item)
+            if not _is_teaching_sentence(sentence):
+                continue
+            extras = _string_list(
+                extras + [sentence],
+                max_items=_MAX_BULLETS,
+                max_len=_MAX_BULLET_CHARS,
+            )
+            if len(extras) >= _MIN_BULLETS:
+                return extras
+    original = [_lengthen_bullet(bullet) for bullet in bullets if bullet.strip()]
+    return (extras or original)[:_MAX_BULLETS]
 
 
-def _normalize_slide(raw: object, beat_title: str) -> ClassroomSlide | None:
+def _normalize_slide(
+    raw: object, beat_title: str, speaking: str = ""
+) -> ClassroomSlide | None:
     if not isinstance(raw, dict):
         return None
     layout = str(raw.get("layout") or "").strip().lower()
@@ -381,6 +526,7 @@ def _normalize_slide(raw: object, beat_title: str) -> ClassroomSlide | None:
         callout=callout,
         equation=equation,
         question=question,
+        speaking=speaking,
     )
 
     if layout == "diagram" and not mermaid:
@@ -422,7 +568,7 @@ def _normalize_beats(raw_beats: object) -> list[ClassroomLessonBeat]:
         speaking = _short_text(item.get("speaking"), _MAX_SPEAKING_CHARS)
         if not title or not speaking:
             continue
-        slide = _normalize_slide(item.get("slide"), title)
+        slide = _normalize_slide(item.get("slide"), title, speaking)
         if slide is None:
             continue
         if not slide.title:

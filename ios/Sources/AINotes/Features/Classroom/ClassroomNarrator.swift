@@ -45,14 +45,11 @@ final class ClassroomNarrator {
         configureAudioSession()
 
         let utterance = AVSpeechUtterance(string: trimmed)
-        if let voice, voice.quality == .premium || voice.quality == .enhanced {
-            utterance.voice = voice
-        } else {
-            utterance.prefersAssistiveTechnologySettings = true
-        }
-        utterance.rate = AVSpeechUtteranceDefaultSpeechRate * 0.93
-        utterance.pitchMultiplier = 1.02
-        utterance.preUtteranceDelay = 0.08
+        utterance.voice = voice
+        utterance.rate = 0.36
+        utterance.pitchMultiplier = 1.0
+        utterance.preUtteranceDelay = 0.22
+        utterance.postUtteranceDelay = 0.16
 
         activeUtterance = utterance
         self.progress = progress

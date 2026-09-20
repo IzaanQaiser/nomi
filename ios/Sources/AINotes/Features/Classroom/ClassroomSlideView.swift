@@ -176,7 +176,7 @@ struct ClassroomSlideView: View {
                     teachingBullets
                         .frame(maxWidth: .infinity, alignment: .leading)
                     mermaidBlock
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .frame(maxWidth: .infinity, minHeight: 260, maxHeight: .infinity)
                 }
                 VStack(alignment: .leading, spacing: 14) {
                     teachingBullets
