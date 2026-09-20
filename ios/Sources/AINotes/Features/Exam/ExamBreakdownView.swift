@@ -182,10 +182,7 @@ struct ExamBreakdownView: View {
 
     private func nomiPanel(height: CGFloat) -> some View {
         ZStack {
-            LinearGradient(
-                colors: [tint.opacity(0.10), NomiTheme.paper],
-                startPoint: .top, endPoint: .bottom
-            )
+            NomiGridBackground(tint: tint)
             VStack(spacing: 18) {
                 NomiView(pose: pose)
                     .frame(height: height * 0.8)

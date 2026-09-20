@@ -303,7 +303,7 @@ struct ProjectsView: View {
             }
             .frame(width: proxy.size.width, height: proxy.size.height)
         }
-        .background(NomiTheme.surface)
+        .background(NomiGridBackground())
         .clipped()
     }
 

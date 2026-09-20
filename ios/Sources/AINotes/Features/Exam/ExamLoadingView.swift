@@ -21,11 +21,8 @@ struct ExamLoadingView: View {
 
     var body: some View {
         ZStack {
-            LinearGradient(
-                colors: [NomiTheme.paper, NomiTheme.blue.opacity(0.10)],
-                startPoint: .top, endPoint: .bottom
-            )
-            .ignoresSafeArea()
+            NomiGridBackground(tint: NomiTheme.blue)
+                .ignoresSafeArea()
 
             TimelineView(.animation) { timeline in
                 let t = timeline.date.timeIntervalSinceReferenceDate
