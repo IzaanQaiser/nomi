@@ -525,13 +525,9 @@ private struct ClassroomBoardView: View {
                         .foregroundStyle(NomiTheme.ink)
 
                     Group {
-                        if player.resolvedBoardActions.isEmpty {
-                            Color.clear
-                        } else {
-                            ClassroomBoardRenderer(actions: player.resolvedBoardActions)
-                        }
+                        slidePreview(for: beat.slide)
                     }
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
 
                     Text(beat.speaking)
                         .font(.subheadline)
@@ -560,6 +556,52 @@ private struct ClassroomBoardView: View {
     private var boardValue: String {
         guard let beat = player.currentBeat else { return "Waiting for Nomi" }
         return "\(player.positionLabel), \(beat.title). \(beat.speaking)"
+    }
+
+    @ViewBuilder
+    private func slidePreview(for slide: ClassroomSlide) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            if !slide.subtitle.isEmpty {
+                Text(slide.subtitle)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(NomiTheme.blue)
+            }
+            if !slide.equation.isEmpty {
+                Text(slide.equation)
+                    .font(.title3.weight(.semibold).monospaced())
+                    .foregroundStyle(NomiTheme.ink)
+            }
+            if !slide.body.isEmpty {
+                Text(slide.body)
+                    .font(.body)
+                    .foregroundStyle(NomiTheme.ink)
+            }
+            ForEach(slide.bullets, id: \.self) { bullet in
+                Text("• \(bullet)")
+                    .font(.body)
+                    .foregroundStyle(NomiTheme.ink)
+            }
+            ForEach(Array(slide.steps.enumerated()), id: \.offset) { index, step in
+                Text("\(index + 1). \(step)")
+                    .font(.body)
+                    .foregroundStyle(NomiTheme.ink)
+            }
+            if !slide.question.isEmpty {
+                Text(slide.question)
+                    .font(.body.weight(.semibold))
+                    .foregroundStyle(NomiTheme.ink)
+            }
+            if !slide.mermaid.isEmpty {
+                Text("Diagram")
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(NomiTheme.secondaryInk)
+            }
+            if !slide.callout.isEmpty {
+                Text(slide.callout)
+                    .font(.footnote)
+                    .foregroundStyle(NomiTheme.secondaryInk)
+            }
+        }
     }
 }
 

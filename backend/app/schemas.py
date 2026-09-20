@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Annotated, Literal
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -92,107 +92,38 @@ class ClassroomPrepareRequest(BaseModel):
     prompt_context: str | None = Field(default=None, max_length=4000)
 
 
-class ClassroomBoardPoint(BaseModel):
-    """Normalized board coordinate. Origin is the board's top-left corner."""
-
-    x: float = Field(ge=0.0, le=1.0)
-    y: float = Field(ge=0.0, le=1.0)
-
-
-class ClassroomBoardFrame(ClassroomBoardPoint):
-    width: float = Field(gt=0.0, le=1.0)
-    height: float = Field(gt=0.0, le=1.0)
-
-
-class ClassroomWriteTextAction(BaseModel):
-    id: str
-    type: Literal["write_text"]
-    reveal_at: float = Field(ge=0.0, le=1.0)
-    text: str
-    position: ClassroomBoardPoint
-    style: Literal["heading", "body", "equation", "label", "emphasis"] = "body"
-
-
-class ClassroomDrawLineAction(BaseModel):
-    id: str
-    type: Literal["draw_line"]
-    reveal_at: float = Field(ge=0.0, le=1.0)
-    start: ClassroomBoardPoint
-    end: ClassroomBoardPoint
-    style: Literal["solid", "dashed"] = "solid"
-
-
-class ClassroomDrawArrowAction(BaseModel):
-    id: str
-    type: Literal["draw_arrow"]
-    reveal_at: float = Field(ge=0.0, le=1.0)
-    start: ClassroomBoardPoint
-    end: ClassroomBoardPoint
-
-
-class ClassroomDrawRectangleAction(BaseModel):
-    id: str
-    type: Literal["draw_rectangle"]
-    reveal_at: float = Field(ge=0.0, le=1.0)
-    frame: ClassroomBoardFrame
-    style: Literal["outline", "filled"] = "outline"
-
-
-class ClassroomDrawAxesAction(BaseModel):
-    id: str
-    type: Literal["draw_axes"]
-    reveal_at: float = Field(ge=0.0, le=1.0)
-    frame: ClassroomBoardFrame
-    x_label: str = ""
-    y_label: str = ""
-
-
-class ClassroomPlotPolylineAction(BaseModel):
-    id: str
-    type: Literal["plot_polyline"]
-    reveal_at: float = Field(ge=0.0, le=1.0)
-    points: list[ClassroomBoardPoint]
-    style: Literal["solid", "dashed"] = "solid"
-
-
-class ClassroomHighlightAction(BaseModel):
-    id: str
-    type: Literal["highlight"]
-    reveal_at: float = Field(ge=0.0, le=1.0)
-    frame: ClassroomBoardFrame
-
-
-class ClassroomClearBoardAction(BaseModel):
-    id: str
-    type: Literal["clear"]
-    reveal_at: float = Field(ge=0.0, le=1.0)
-
-
-ClassroomBoardAction = Annotated[
-    ClassroomWriteTextAction
-    | ClassroomDrawLineAction
-    | ClassroomDrawArrowAction
-    | ClassroomDrawRectangleAction
-    | ClassroomDrawAxesAction
-    | ClassroomPlotPolylineAction
-    | ClassroomHighlightAction
-    | ClassroomClearBoardAction,
-    Field(discriminator="type"),
+ClassroomSlideLayout = Literal[
+    "title",
+    "concept",
+    "equation",
+    "bullets",
+    "steps",
+    "diagram",
+    "checkpoint",
 ]
 
 
-class ClassroomBoardCue(BaseModel):
-    # Legacy semantic fields remain for clients deployed before board protocol v1.
-    kind: Literal["diagram", "equation", "list", "none"] = "none"
-    instruction: str = ""
-    actions: list[ClassroomBoardAction] = []
+class ClassroomSlide(BaseModel):
+    """Deterministic visual lesson card. Unused fields stay empty."""
+
+    layout: ClassroomSlideLayout
+    title: str = ""
+    subtitle: str = ""
+    body: str = ""
+    bullets: list[str] = []
+    equation: str = ""
+    caption: str = ""
+    callout: str = ""
+    steps: list[str] = []
+    mermaid: str = ""
+    question: str = ""
 
 
 class ClassroomLessonBeat(BaseModel):
     index: int
     title: str
     speaking: str
-    board: ClassroomBoardCue = ClassroomBoardCue()
+    slide: ClassroomSlide
 
 
 class ClassroomLessonSource(BaseModel):
@@ -210,7 +141,7 @@ class ClassroomPassage(BaseModel):
 
 
 class ClassroomLessonOut(BaseModel):
-    board_protocol_version: Literal[2] = 2
+    lesson_protocol_version: Literal[1] = 1
     in_scope: bool
     topic: str
     title: str = ""

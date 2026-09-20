@@ -83,245 +83,47 @@ struct ClassroomSuggestionsResponse: Codable, Hashable {
     let suggestions: [String]
 }
 
-/// Normalized board coordinate. `(0, 0)` is top-left and `(1, 1)` is bottom-right.
-struct ClassroomBoardPoint: Codable, Hashable {
-    let x: Double
-    let y: Double
+enum ClassroomSlideLayout: String, Codable, Hashable {
+    case title
+    case concept
+    case equation
+    case bullets
+    case steps
+    case diagram
+    case checkpoint
 }
 
-struct ClassroomBoardFrame: Codable, Hashable {
-    let x: Double
-    let y: Double
-    let width: Double
-    let height: Double
-}
-
-struct ClassroomWriteTextAction: Codable, Hashable {
-    let id: String
-    let type: String
-    let revealAt: Double?
-    let text: String
-    let position: ClassroomBoardPoint
-    let style: String
+struct ClassroomSlide: Codable, Hashable {
+    let layout: ClassroomSlideLayout
+    let title: String
+    let subtitle: String
+    let body: String
+    let bullets: [String]
+    let equation: String
+    let caption: String
+    let callout: String
+    let steps: [String]
+    let mermaid: String
+    let question: String
 
     enum CodingKeys: String, CodingKey {
-        case id, type, text, position, style
-        case revealAt = "reveal_at"
-    }
-}
-
-struct ClassroomDrawLineAction: Codable, Hashable {
-    let id: String
-    let type: String
-    let revealAt: Double?
-    let start: ClassroomBoardPoint
-    let end: ClassroomBoardPoint
-    let style: String
-
-    enum CodingKeys: String, CodingKey {
-        case id, type, start, end, style
-        case revealAt = "reveal_at"
-    }
-}
-
-struct ClassroomDrawArrowAction: Codable, Hashable {
-    let id: String
-    let type: String
-    let revealAt: Double?
-    let start: ClassroomBoardPoint
-    let end: ClassroomBoardPoint
-
-    enum CodingKeys: String, CodingKey {
-        case id, type, start, end
-        case revealAt = "reveal_at"
-    }
-}
-
-struct ClassroomDrawRectangleAction: Codable, Hashable {
-    let id: String
-    let type: String
-    let revealAt: Double?
-    let frame: ClassroomBoardFrame
-    let style: String
-
-    enum CodingKeys: String, CodingKey {
-        case id, type, frame, style
-        case revealAt = "reveal_at"
-    }
-}
-
-struct ClassroomDrawAxesAction: Codable, Hashable {
-    let id: String
-    let type: String
-    let revealAt: Double?
-    let frame: ClassroomBoardFrame
-    let xLabel: String
-    let yLabel: String
-
-    enum CodingKeys: String, CodingKey {
-        case id, type, frame
-        case revealAt = "reveal_at"
-        case xLabel = "x_label"
-        case yLabel = "y_label"
-    }
-}
-
-struct ClassroomPlotPolylineAction: Codable, Hashable {
-    let id: String
-    let type: String
-    let revealAt: Double?
-    let points: [ClassroomBoardPoint]
-    let style: String
-
-    enum CodingKeys: String, CodingKey {
-        case id, type, points, style
-        case revealAt = "reveal_at"
-    }
-}
-
-struct ClassroomHighlightAction: Codable, Hashable {
-    let id: String
-    let type: String
-    let revealAt: Double?
-    let frame: ClassroomBoardFrame
-
-    enum CodingKeys: String, CodingKey {
-        case id, type, frame
-        case revealAt = "reveal_at"
-    }
-}
-
-struct ClassroomClearBoardAction: Codable, Hashable {
-    let id: String
-    let type: String
-    let revealAt: Double?
-
-    enum CodingKeys: String, CodingKey {
-        case id, type
-        case revealAt = "reveal_at"
-    }
-}
-
-/// Closed board protocol understood by this app version. Unknown future
-/// operations remain decodable but are ignored by the renderer.
-enum ClassroomBoardAction: Codable, Hashable, Identifiable {
-    case writeText(ClassroomWriteTextAction)
-    case drawLine(ClassroomDrawLineAction)
-    case drawArrow(ClassroomDrawArrowAction)
-    case drawRectangle(ClassroomDrawRectangleAction)
-    case drawAxes(ClassroomDrawAxesAction)
-    case plotPolyline(ClassroomPlotPolylineAction)
-    case highlight(ClassroomHighlightAction)
-    case clear(ClassroomClearBoardAction)
-    case unsupported(id: String, type: String)
-
-    private enum CodingKeys: String, CodingKey { case id, type }
-
-    init(from decoder: Decoder) throws {
-        let container = try decoder.container(keyedBy: CodingKeys.self)
-        let type = try container.decode(String.self, forKey: .type)
-        switch type {
-        case "write_text": self = .writeText(try ClassroomWriteTextAction(from: decoder))
-        case "draw_line": self = .drawLine(try ClassroomDrawLineAction(from: decoder))
-        case "draw_arrow": self = .drawArrow(try ClassroomDrawArrowAction(from: decoder))
-        case "draw_rectangle": self = .drawRectangle(try ClassroomDrawRectangleAction(from: decoder))
-        case "draw_axes": self = .drawAxes(try ClassroomDrawAxesAction(from: decoder))
-        case "plot_polyline": self = .plotPolyline(try ClassroomPlotPolylineAction(from: decoder))
-        case "highlight": self = .highlight(try ClassroomHighlightAction(from: decoder))
-        case "clear": self = .clear(try ClassroomClearBoardAction(from: decoder))
-        default:
-            self = .unsupported(
-                id: try container.decodeIfPresent(String.self, forKey: .id) ?? "unsupported-\(type)",
-                type: type
-            )
-        }
-    }
-
-    func encode(to encoder: Encoder) throws {
-        switch self {
-        case let .writeText(action): try action.encode(to: encoder)
-        case let .drawLine(action): try action.encode(to: encoder)
-        case let .drawArrow(action): try action.encode(to: encoder)
-        case let .drawRectangle(action): try action.encode(to: encoder)
-        case let .drawAxes(action): try action.encode(to: encoder)
-        case let .plotPolyline(action): try action.encode(to: encoder)
-        case let .highlight(action): try action.encode(to: encoder)
-        case let .clear(action): try action.encode(to: encoder)
-        case let .unsupported(id, type):
-            var container = encoder.container(keyedBy: CodingKeys.self)
-            try container.encode(id, forKey: .id)
-            try container.encode(type, forKey: .type)
-        }
-    }
-
-    var id: String {
-        switch self {
-        case let .writeText(action): action.id
-        case let .drawLine(action): action.id
-        case let .drawArrow(action): action.id
-        case let .drawRectangle(action): action.id
-        case let .drawAxes(action): action.id
-        case let .plotPolyline(action): action.id
-        case let .highlight(action): action.id
-        case let .clear(action): action.id
-        case let .unsupported(id, _): id
-        }
-    }
-
-    var isClear: Bool {
-        if case .clear = self { return true }
-        return false
-    }
-
-    var isSupported: Bool {
-        if case .unsupported = self { return false }
-        return true
-    }
-
-    var revealAt: Double? {
-        switch self {
-        case let .writeText(action): action.revealAt
-        case let .drawLine(action): action.revealAt
-        case let .drawArrow(action): action.revealAt
-        case let .drawRectangle(action): action.revealAt
-        case let .drawAxes(action): action.revealAt
-        case let .plotPolyline(action): action.revealAt
-        case let .highlight(action): action.revealAt
-        case let .clear(action): action.revealAt
-        case .unsupported: nil
-        }
-    }
-
-    var previewDescription: String {
-        switch self {
-        case let .writeText(action): action.text
-        case .drawLine: "Draw a line"
-        case .drawArrow: "Connect the ideas"
-        case .drawRectangle: "Draw a block"
-        case let .drawAxes(action):
-            [action.xLabel, action.yLabel].filter { !$0.isEmpty }.joined(separator: " / ")
-        case .plotPolyline: "Plot the relationship"
-        case .highlight: "Highlight this region"
-        case .clear: "Clear the board"
-        case .unsupported: ""
-        }
-    }
-}
-
-struct ClassroomBoardCue: Codable, Hashable {
-    let kind: String
-    let instruction: String
-    let actions: [ClassroomBoardAction]
-
-    enum CodingKeys: String, CodingKey {
-        case kind, instruction, actions
+        case layout, title, subtitle, body, bullets, equation, caption, callout, steps, mermaid, question
     }
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        kind = try container.decodeIfPresent(String.self, forKey: .kind) ?? "none"
-        instruction = try container.decodeIfPresent(String.self, forKey: .instruction) ?? ""
-        actions = try container.decodeIfPresent([ClassroomBoardAction].self, forKey: .actions) ?? []
+        let rawLayout = try container.decodeIfPresent(String.self, forKey: .layout) ?? "concept"
+        layout = ClassroomSlideLayout(rawValue: rawLayout) ?? .concept
+        title = try container.decodeIfPresent(String.self, forKey: .title) ?? ""
+        subtitle = try container.decodeIfPresent(String.self, forKey: .subtitle) ?? ""
+        body = try container.decodeIfPresent(String.self, forKey: .body) ?? ""
+        bullets = try container.decodeIfPresent([String].self, forKey: .bullets) ?? []
+        equation = try container.decodeIfPresent(String.self, forKey: .equation) ?? ""
+        caption = try container.decodeIfPresent(String.self, forKey: .caption) ?? ""
+        callout = try container.decodeIfPresent(String.self, forKey: .callout) ?? ""
+        steps = try container.decodeIfPresent([String].self, forKey: .steps) ?? []
+        mermaid = try container.decodeIfPresent(String.self, forKey: .mermaid) ?? ""
+        question = try container.decodeIfPresent(String.self, forKey: .question) ?? ""
     }
 }
 
@@ -330,7 +132,7 @@ struct ClassroomLessonBeat: Codable, Hashable, Identifiable {
     let index: Int
     let title: String
     let speaking: String
-    let board: ClassroomBoardCue
+    let slide: ClassroomSlide
 }
 
 struct ClassroomLessonSource: Codable, Hashable, Identifiable {
@@ -363,7 +165,7 @@ struct ClassroomPassage: Codable, Hashable, Identifiable {
 }
 
 struct ClassroomLesson: Codable, Hashable {
-    let boardProtocolVersion: Int
+    let lessonProtocolVersion: Int
     let inScope: Bool
     let topic: String
     let title: String
@@ -377,16 +179,16 @@ struct ClassroomLesson: Codable, Hashable {
 
     enum CodingKeys: String, CodingKey {
         case topic, title, reason, summary, beats, sources, citations, passages, grounding
-        case boardProtocolVersion = "board_protocol_version"
+        case lessonProtocolVersion = "lesson_protocol_version"
         case inScope = "in_scope"
     }
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        boardProtocolVersion = try container.decodeIfPresent(
+        lessonProtocolVersion = try container.decodeIfPresent(
             Int.self,
-            forKey: .boardProtocolVersion
-        ) ?? 0
+            forKey: .lessonProtocolVersion
+        ) ?? 1
         inScope = try container.decode(Bool.self, forKey: .inScope)
         topic = try container.decode(String.self, forKey: .topic)
         title = try container.decode(String.self, forKey: .title)

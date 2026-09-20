@@ -91,19 +91,16 @@ configured:
 - `POST /projects/{id}/classroom/teach` -> a sourced lesson, with optional history
 - `POST /projects/{id}/shadow` -> live tutor analysis (image + context)
 
-### Classroom board protocol v2
+### Classroom lesson protocol v1
 
-`classroom/prepare` returns `board_protocol_version: 2`. Every beat contains an
-ordered `board.actions` array. Coordinates are normalized to `[0, 1]` relative
-to the board, with `(0, 0)` at the top-left. Supported operations are
-`write_text`, `draw_line`, `draw_arrow`, `draw_rectangle`, `draw_axes`,
-`plot_polyline`, `highlight`, and `clear`. Actions persist between beats;
-`clear` resets Nomi's board layer. The server validates geometry, assigns stable
-action IDs, and removes unsupported or malformed model output before returning
-the lesson. A `write_text.position` is the text's top-left anchor; frame `x/y`
-is likewise the top-left corner and width/height extend right and down. Every
-action includes `reveal_at`, a normalized position through its beat narration;
-the server supplies deterministic timing when the model omits or mangles it.
+`classroom/prepare` returns `lesson_protocol_version: 1`. Every in-scope lesson
+has 4 to 8 beats. Each beat contains spoken narration (`speaking`) and a
+deterministic `slide` with a layout of `title`, `concept`, `equation`,
+`bullets`, `steps`, `diagram`, or `checkpoint`. Diagram slides require Mermaid
+syntax (`flowchart`, `stateDiagram`, or `sequenceDiagram`). Equation slides
+require an equation and checkpoint slides require a question. The server
+sanitizes bounded fields and drops malformed or coordinate-based board output
+before returning the lesson. Out-of-scope topics return no beats.
 
 ## Architecture notes
 

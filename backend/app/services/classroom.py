@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import math
 import re
 
 from sqlalchemy.orm import Session
@@ -10,25 +9,14 @@ from ..config import get_settings
 from ..schemas import (
     ChatResponse,
     Citation,
-    ClassroomBoardCue,
-    ClassroomBoardFrame,
-    ClassroomBoardPoint,
-    ClassroomClearBoardAction,
-    ClassroomDrawArrowAction,
-    ClassroomDrawAxesAction,
-    ClassroomDrawLineAction,
-    ClassroomDrawRectangleAction,
-    ClassroomHighlightAction,
     ClassroomHistoryMessage,
     ClassroomLessonBeat,
     ClassroomLessonOut,
     ClassroomLessonSource,
     ClassroomPassage,
-    ClassroomPlotPolylineAction,
-    ClassroomWriteTextAction,
+    ClassroomSlide,
 )
 from .llm import get_provider
-from .llm.base import LLMProvider
 from .retrieval import RetrievedContext, gather_context
 
 _TEACH_SYSTEM = (
@@ -41,36 +29,30 @@ _TEACH_SYSTEM = (
 )
 
 _PREPARE_SYSTEM = (
-    "Prepare a classroom lesson plan from the student's course sources only. "
+    "You are Nomi acting as a lesson planner, not a graphic designer. "
+    "Prepare a classroom mini-lecture from the student's course sources only. "
     "Decide if the requested topic is actually covered by those sources. "
     "If it is not, in_scope must be false, beats must be empty, and reason "
-    "should be one short sentence. If it is, produce 4 to 6 teaching beats "
-    "a later step can play, pause, rewind, and draw. Do not invent facts. "
-    "Each board action uses normalized coordinates from 0 to 1 with origin at "
-    "the TOP-LEFT of the board. Actions run in array order and persist across "
-    "beats until a clear action. Every action must include reveal_at, a number "
-    "from 0 to 1 representing the fraction through that beat's speaking text "
-    "when the action should appear. Put an action at the moment its idea is "
-    "first introduced and keep reveal_at values nondecreasing in array order. "
-    "Use only these exact action shapes: write_text "
-    "{type,reveal_at,text,position:{x,y},style}; draw_line "
-    "{type,reveal_at,start:{x,y},end:{x,y},style}; draw_arrow "
-    "{type,reveal_at,start:{x,y},end:{x,y}}; draw_rectangle "
-    "{type,reveal_at,frame:{x,y,width,height},style}; draw_axes "
-    "{type,reveal_at,frame:{x,y,width,height},x_label,y_label}; plot_polyline "
-    "{type,reveal_at,points:[{x,y}],style}; highlight "
-    "{type,reveal_at,frame:{x,y,width,height}}; or clear {type,reveal_at}. "
-    "write_text style must be heading, body, equation, label, or emphasis. "
-    "Line and polyline style must be solid or dashed. Rectangle style must be "
-    "outline or filled. Frame x/y is its top-left corner; width/height extend "
-    "right and down and must remain inside the board. write_text position is "
-    "the text's top-left anchor. "
-    "Never include IDs; the server assigns them. "
+    "should be one short sentence. If it is, produce 4 to 8 coherent teaching "
+    "beats a later step can play, pause, and rewind. Build intuition before "
+    "details. Stay grounded in the retrieved sources and do not invent facts. "
+    "Each beat has spoken narration (`speaking`) and a visual slide. Keep "
+    "slide copy concise: titles, a short body, bullets, an equation, or a "
+    "checkpoint question. Do not duplicate the narration verbatim into the "
+    "slide body. Choose layouts intentionally: title, concept, equation, "
+    "bullets, steps, diagram, or checkpoint. Use a diagram only when a "
+    "relationship genuinely needs a picture. Mermaid must be simple and robust: "
+    "prefer flowchart, stateDiagram, or sequenceDiagram. Avoid experimental "
+    "syntax and dense diagrams. Produce Mermaid syntax only, never SVG, HTML, "
+    "or coordinates. Produce no x/y positions and no board commands. Include "
+    "a useful checkpoint beat when appropriate. "
     "Respond with STRICT JSON only, no prose and no code fences, matching:\n"
     '{"in_scope": bool, "topic": str, "title": str, "reason": str|null, '
     '"summary": str, "beats": [{"title": str, "speaking": str, '
-    '"board": {"kind": "diagram"|"equation"|"list"|"none", "instruction": str, '
-    '"actions": [object]}}]}'
+    '"slide": {"layout": "title"|"concept"|"equation"|"bullets"|"steps"'
+    '|"diagram"|"checkpoint", "title": str, "subtitle": str, "body": str, '
+    '"bullets": [str], "equation": str, "caption": str, "callout": str, '
+    '"steps": [str], "mermaid": str, "question": str}}]}'
 )
 
 _SUGGEST_SYSTEM = (
@@ -79,170 +61,44 @@ _SUGGEST_SYSTEM = (
     "topic names, each two to five words. Do not include numbering or commentary."
 )
 
-_BOARD_REPAIR_SYSTEM = (
-    "You are repairing the executable whiteboard commands for an existing "
-    "grounded lesson. Return a JSON object with one `beats` item for every "
-    "requested beat index. Each item is {index: integer, actions: [object]}. "
-    "Do not rewrite the lesson and do not return prose. Create the actual "
-    "visuals described by the beat rather than writing an instruction to draw "
-    "them. Use normalized coordinates from 0 to 1 with top-left origin. Every "
-    "action needs reveal_at from 0 to 1, nondecreasing within that beat. Use "
-    "only: write_text {type,reveal_at,text,position:{x,y},style}; draw_line "
-    "{type,reveal_at,start:{x,y},end:{x,y},style}; draw_arrow "
-    "{type,reveal_at,start:{x,y},end:{x,y}}; draw_rectangle "
-    "{type,reveal_at,frame:{x,y,width,height},style}; draw_axes "
-    "{type,reveal_at,frame:{x,y,width,height},x_label,y_label}; plot_polyline "
-    "{type,reveal_at,points:[{x,y}],style}; highlight "
-    "{type,reveal_at,frame:{x,y,width,height}}; clear {type,reveal_at}. "
-    "Use heading/body/equation/label/emphasis text styles, solid/dashed line "
-    "styles, and outline/filled rectangle styles. Never include action IDs."
-)
-
-_POINT_SCHEMA = {
-    "type": "object",
-    "properties": {"x": {"type": "number"}, "y": {"type": "number"}},
-    "required": ["x", "y"],
-    "additionalProperties": False,
+_SLIDE_LAYOUTS = {
+    "title",
+    "concept",
+    "equation",
+    "bullets",
+    "steps",
+    "diagram",
+    "checkpoint",
 }
-_FRAME_SCHEMA = {
-    "type": "object",
-    "properties": {
-        "x": {"type": "number"},
-        "y": {"type": "number"},
-        "width": {"type": "number"},
-        "height": {"type": "number"},
-    },
-    "required": ["x", "y", "width", "height"],
-    "additionalProperties": False,
-}
-
-
-def _action_schema(action_type: str, properties: dict, required: list[str]) -> dict:
-    return {
-        "type": "object",
-        "properties": {
-            "type": {"type": "string", "const": action_type},
-            "reveal_at": {"type": "number"},
-            **properties,
-        },
-        "required": ["type", "reveal_at", *required],
-        "additionalProperties": False,
-    }
-
-
-_BOARD_REPAIR_JSON_SCHEMA = {
-    "type": "object",
-    "properties": {
-        "beats": {
-            "type": "array",
-            "minItems": 1,
-            "maxItems": 6,
-            "items": {
-                "type": "object",
-                "properties": {
-                    "index": {"type": "integer"},
-                    "actions": {
-                        "type": "array",
-                        "minItems": 1,
-                        "maxItems": 12,
-                        "items": {
-                            "anyOf": [
-                                _action_schema(
-                                    "write_text",
-                                    {
-                                        "text": {"type": "string"},
-                                        "position": _POINT_SCHEMA,
-                                        "style": {
-                                            "type": "string",
-                                            "enum": [
-                                                "heading",
-                                                "body",
-                                                "equation",
-                                                "label",
-                                                "emphasis",
-                                            ],
-                                        },
-                                    },
-                                    ["text", "position", "style"],
-                                ),
-                                _action_schema(
-                                    "draw_line",
-                                    {
-                                        "start": _POINT_SCHEMA,
-                                        "end": _POINT_SCHEMA,
-                                        "style": {
-                                            "type": "string",
-                                            "enum": ["solid", "dashed"],
-                                        },
-                                    },
-                                    ["start", "end", "style"],
-                                ),
-                                _action_schema(
-                                    "draw_arrow",
-                                    {"start": _POINT_SCHEMA, "end": _POINT_SCHEMA},
-                                    ["start", "end"],
-                                ),
-                                _action_schema(
-                                    "draw_rectangle",
-                                    {
-                                        "frame": _FRAME_SCHEMA,
-                                        "style": {
-                                            "type": "string",
-                                            "enum": ["outline", "filled"],
-                                        },
-                                    },
-                                    ["frame", "style"],
-                                ),
-                                _action_schema(
-                                    "draw_axes",
-                                    {
-                                        "frame": _FRAME_SCHEMA,
-                                        "x_label": {"type": "string"},
-                                        "y_label": {"type": "string"},
-                                    },
-                                    ["frame", "x_label", "y_label"],
-                                ),
-                                _action_schema(
-                                    "plot_polyline",
-                                    {
-                                        "points": {
-                                            "type": "array",
-                                            "minItems": 2,
-                                            "maxItems": 24,
-                                            "items": _POINT_SCHEMA,
-                                        },
-                                        "style": {
-                                            "type": "string",
-                                            "enum": ["solid", "dashed"],
-                                        },
-                                    },
-                                    ["points", "style"],
-                                ),
-                                _action_schema(
-                                    "highlight", {"frame": _FRAME_SCHEMA}, ["frame"]
-                                ),
-                                _action_schema("clear", {}, []),
-                            ]
-                        },
-                    },
-                },
-                "required": ["index", "actions"],
-                "additionalProperties": False,
-            },
-        }
-    },
-    "required": ["beats"],
-    "additionalProperties": False,
-}
-
-_BOARD_KINDS = {"diagram", "equation", "list", "none"}
-_MAX_BEATS = 6
-_MAX_BOARD_ACTIONS_PER_BEAT = 12
-_MAX_POLYLINE_POINTS = 24
+_MIN_BEATS = 4
+_MAX_BEATS = 8
+_MAX_BULLETS = 6
+_MAX_STEPS = 8
+_MAX_BULLET_CHARS = 140
+_MAX_STEP_CHARS = 160
+_MAX_TITLE_CHARS = 80
+_MAX_SUBTITLE_CHARS = 120
+_MAX_BODY_CHARS = 400
+_MAX_CAPTION_CHARS = 180
+_MAX_CALLOUT_CHARS = 180
+_MAX_EQUATION_CHARS = 200
+_MAX_QUESTION_CHARS = 240
+_MAX_SPEAKING_CHARS = 800
+_MAX_MERMAID_CHARS = 2500
 _MAX_PASSAGE_CHARS = 1600
 _MAX_PASSAGES_CHARS = 16_000
 
 _JSON_FENCE_RE = re.compile(r"^```(?:json)?\s*|\s*```$", re.IGNORECASE)
+_MERMAID_FENCE_RE = re.compile(
+    r"^```(?:mermaid)?\s*|\s*```$", re.IGNORECASE | re.MULTILINE
+)
+_MERMAID_START_RE = re.compile(
+    r"^(flowchart|graph|statediagram(?:-v2)?|sequencediagram)\b",
+    re.IGNORECASE,
+)
+_FORBIDDEN_VISUAL_RE = re.compile(
+    r"<(svg|html|body|script|iframe)\b", re.IGNORECASE
+)
 _GENERIC_HEADINGS = {
     "contents",
     "table of contents",
@@ -391,187 +247,97 @@ def _clean_title(value: str, fallback: str) -> str:
     return title or fallback
 
 
-def _coordinate(value: object) -> float | None:
-    if isinstance(value, bool) or not isinstance(value, (int, float)):
-        return None
-    number = float(value)
-    if not math.isfinite(number):
-        return None
-    return min(1.0, max(0.0, number))
-
-
-def _point(value: object) -> ClassroomBoardPoint | None:
-    if not isinstance(value, dict):
-        return None
-    x, y = _coordinate(value.get("x")), _coordinate(value.get("y"))
-    if x is None or y is None:
-        return None
-    return ClassroomBoardPoint(x=x, y=y)
-
-
-def _frame(value: object) -> ClassroomBoardFrame | None:
-    if not isinstance(value, dict):
-        return None
-    x, y = _coordinate(value.get("x")), _coordinate(value.get("y"))
-    width, height = _coordinate(value.get("width")), _coordinate(value.get("height"))
-    if x is None or y is None or width is None or height is None:
-        return None
-    width, height = min(width, 1.0 - x), min(height, 1.0 - y)
-    if width <= 0.005 or height <= 0.005:
-        return None
-    return ClassroomBoardFrame(x=x, y=y, width=width, height=height)
-
-
 def _short_text(value: object, limit: int) -> str:
     return " ".join(str(value or "").split())[:limit]
 
 
-def _normalize_board_actions(raw: object, beat_index: int) -> list:
-    if not isinstance(raw, list):
+def _string_list(value: object, *, max_items: int, max_len: int) -> list[str]:
+    if isinstance(value, str) and value.strip():
+        raw_items: list[object] = [value]
+    elif isinstance(value, list):
+        raw_items = value
+    else:
         return []
-    actions: list = []
-    requested_reveals: list[float | None] = []
-    for item in raw:
-        if not isinstance(item, dict):
+    items: list[str] = []
+    seen: set[str] = set()
+    for item in raw_items:
+        text = _short_text(item, max_len)
+        key = text.lower()
+        if not text or key in seen:
             continue
-        action_type = str(item.get("type") or "").strip().lower()
-        action_id = f"b{beat_index}-a{len(actions)}"
-        previous_count = len(actions)
-
-        if action_type == "write_text":
-            text = _short_text(item.get("text"), 240)
-            position = _point(item.get("position"))
-            style = str(item.get("style") or "body").strip().lower()
-            if style not in {"heading", "body", "equation", "label", "emphasis"}:
-                style = "body"
-            if text and position:
-                actions.append(
-                    ClassroomWriteTextAction(
-                        id=action_id,
-                        type="write_text",
-                        reveal_at=0,
-                        text=text,
-                        position=position,
-                        style=style,
-                    )
-                )
-        elif action_type == "draw_line":
-            start, end = _point(item.get("start")), _point(item.get("end"))
-            style = str(item.get("style") or "solid").strip().lower()
-            if style not in {"solid", "dashed"}:
-                style = "solid"
-            if start and end and start != end:
-                actions.append(
-                    ClassroomDrawLineAction(
-                        id=action_id,
-                        type="draw_line",
-                        reveal_at=0,
-                        start=start,
-                        end=end,
-                        style=style,
-                    )
-                )
-        elif action_type == "draw_arrow":
-            start, end = _point(item.get("start")), _point(item.get("end"))
-            if start and end and start != end:
-                actions.append(
-                    ClassroomDrawArrowAction(
-                        id=action_id,
-                        type="draw_arrow",
-                        reveal_at=0,
-                        start=start,
-                        end=end,
-                    )
-                )
-        elif action_type == "draw_rectangle":
-            frame = _frame(item.get("frame"))
-            style = str(item.get("style") or "outline").strip().lower()
-            if style not in {"outline", "filled"}:
-                style = "outline"
-            if frame:
-                actions.append(
-                    ClassroomDrawRectangleAction(
-                        id=action_id,
-                        type="draw_rectangle",
-                        reveal_at=0,
-                        frame=frame,
-                        style=style,
-                    )
-                )
-        elif action_type == "draw_axes":
-            frame = _frame(item.get("frame"))
-            if frame:
-                actions.append(
-                    ClassroomDrawAxesAction(
-                        id=action_id,
-                        type="draw_axes",
-                        reveal_at=0,
-                        frame=frame,
-                        x_label=_short_text(item.get("x_label"), 32),
-                        y_label=_short_text(item.get("y_label"), 32),
-                    )
-                )
-        elif action_type == "plot_polyline":
-            raw_points = (
-                item.get("points") if isinstance(item.get("points"), list) else []
-            )
-            points = [
-                point
-                for value in raw_points[:_MAX_POLYLINE_POINTS]
-                if (point := _point(value))
-            ]
-            style = str(item.get("style") or "solid").strip().lower()
-            if style not in {"solid", "dashed"}:
-                style = "solid"
-            if len(points) >= 2:
-                actions.append(
-                    ClassroomPlotPolylineAction(
-                        id=action_id,
-                        type="plot_polyline",
-                        reveal_at=0,
-                        points=points,
-                        style=style,
-                    )
-                )
-        elif action_type == "highlight":
-            frame = _frame(item.get("frame"))
-            if frame:
-                actions.append(
-                    ClassroomHighlightAction(
-                        id=action_id,
-                        type="highlight",
-                        reveal_at=0,
-                        frame=frame,
-                    )
-                )
-        elif action_type == "clear":
-            actions.append(
-                ClassroomClearBoardAction(
-                    id=action_id,
-                    type="clear",
-                    reveal_at=0,
-                )
-            )
-
-        if len(actions) > previous_count:
-            requested_reveals.append(_coordinate(item.get("reveal_at")))
-
-        if len(actions) == _MAX_BOARD_ACTIONS_PER_BEAT:
+        seen.add(key)
+        items.append(text)
+        if len(items) == max_items:
             break
+    return items
 
-    # Model timing is advisory. Missing timing gets a stable spread across the
-    # narration and decreasing timing is raised to preserve command ordering.
-    last_reveal = 0.0
-    denominator = max(1, len(actions) - 1)
-    for index, action in enumerate(actions):
-        fallback = 0.08 + (0.84 * index / denominator)
-        requested = requested_reveals[index]
-        reveal_at = min(
-            0.96, max(last_reveal, requested if requested is not None else fallback)
-        )
-        action.reveal_at = round(reveal_at, 3)
-        last_reveal = reveal_at
-    return actions
+
+def _normalize_mermaid(value: object) -> str:
+    text = str(value or "").strip()
+    if not text:
+        return ""
+    text = _MERMAID_FENCE_RE.sub("", text).strip()
+    if not text or len(text) > _MAX_MERMAID_CHARS:
+        return ""
+    if _FORBIDDEN_VISUAL_RE.search(text):
+        return ""
+    lowered = text.lower()
+    if "reveal_at" in lowered or "draw_arrow" in lowered or "write_text" in lowered:
+        return ""
+    first_line = next((line.strip() for line in text.splitlines() if line.strip()), "")
+    if not _MERMAID_START_RE.match(first_line):
+        return ""
+    return text
+
+
+def _normalize_slide(raw: object, beat_title: str) -> ClassroomSlide | None:
+    if not isinstance(raw, dict):
+        return None
+    layout = str(raw.get("layout") or "").strip().lower()
+    if layout not in _SLIDE_LAYOUTS:
+        return None
+
+    title = _short_text(raw.get("title") or beat_title, _MAX_TITLE_CHARS)
+    subtitle = _short_text(raw.get("subtitle"), _MAX_SUBTITLE_CHARS)
+    body = _short_text(raw.get("body"), _MAX_BODY_CHARS)
+    caption = _short_text(raw.get("caption"), _MAX_CAPTION_CHARS)
+    callout = _short_text(raw.get("callout"), _MAX_CALLOUT_CHARS)
+    equation = _short_text(raw.get("equation"), _MAX_EQUATION_CHARS)
+    question = _short_text(raw.get("question"), _MAX_QUESTION_CHARS)
+    bullets = _string_list(
+        raw.get("bullets"), max_items=_MAX_BULLETS, max_len=_MAX_BULLET_CHARS
+    )
+    steps = _string_list(
+        raw.get("steps"), max_items=_MAX_STEPS, max_len=_MAX_STEP_CHARS
+    )
+    mermaid = _normalize_mermaid(raw.get("mermaid")) if layout == "diagram" else ""
+
+    if layout == "diagram" and not mermaid:
+        return None
+    if layout == "equation" and not equation:
+        return None
+    if layout == "checkpoint" and not question:
+        return None
+    if layout == "bullets" and not bullets:
+        return None
+    if layout == "steps" and not steps:
+        return None
+    if layout == "title" and not title:
+        return None
+
+    return ClassroomSlide(
+        layout=layout,  # type: ignore[arg-type]
+        title=title,
+        subtitle=subtitle,
+        body=body,
+        bullets=bullets if layout in {"bullets", "concept", "title"} else [],
+        equation=equation if layout in {"equation", "concept"} else "",
+        caption=caption,
+        callout=callout,
+        steps=steps if layout in {"steps", "concept"} else [],
+        mermaid=mermaid if layout == "diagram" else "",
+        question=question if layout in {"checkpoint", "concept"} else "",
+    )
 
 
 def _normalize_beats(raw_beats: object) -> list[ClassroomLessonBeat]:
@@ -581,98 +347,26 @@ def _normalize_beats(raw_beats: object) -> list[ClassroomLessonBeat]:
     for item in raw_beats:
         if not isinstance(item, dict):
             continue
-        title = " ".join(str(item.get("title") or "").split())[:80]
-        speaking = " ".join(str(item.get("speaking") or "").split())[:800]
+        title = _short_text(item.get("title"), _MAX_TITLE_CHARS)
+        speaking = _short_text(item.get("speaking"), _MAX_SPEAKING_CHARS)
         if not title or not speaking:
             continue
-        board_raw = item.get("board") if isinstance(item.get("board"), dict) else {}
-        kind = str(board_raw.get("kind") or "none").strip().lower()
-        if kind not in _BOARD_KINDS:
-            kind = "none"
-        instruction = " ".join(str(board_raw.get("instruction") or "").split())[:400]
-        beat_index = len(beats)
-        actions = _normalize_board_actions(board_raw.get("actions"), beat_index)
+        slide = _normalize_slide(item.get("slide"), title)
+        if slide is None:
+            continue
+        if not slide.title:
+            slide.title = title
         beats.append(
             ClassroomLessonBeat(
-                index=beat_index,
+                index=len(beats),
                 title=title,
                 speaking=speaking,
-                board=ClassroomBoardCue(
-                    kind=kind,
-                    instruction=instruction,
-                    actions=actions,
-                ),
+                slide=slide,
             )
         )
         if len(beats) == _MAX_BEATS:
             break
     return beats
-
-
-def _repair_missing_board_actions(
-    provider: LLMProvider,
-    beats: list[ClassroomLessonBeat],
-    topic: str,
-    context: str,
-) -> tuple[list[ClassroomLessonBeat], bool]:
-    """Fill missing executable board commands without rewriting lesson content."""
-    total_actions = sum(len(beat.board.actions) for beat in beats)
-    target_indices = {
-        beat.index
-        for beat in beats
-        if not beat.board.actions
-        and (total_actions == 0 or beat.board.kind != "none" or beat.board.instruction)
-    }
-    if not target_indices:
-        return beats, True
-
-    requested = [
-        {
-            "index": beat.index,
-            "title": beat.title,
-            "speaking": beat.speaking,
-            "kind": beat.board.kind,
-            "instruction": beat.board.instruction,
-        }
-        for beat in beats
-        if beat.index in target_indices
-    ]
-    user = (
-        f"Topic: {topic}\n\n"
-        f"Beats requiring executable board actions:\n{json.dumps(requested)}\n\n"
-        f"Course context:\n<<<CONTEXT>>>\n{context[:12_000]}\n<<<END>>>"
-    )
-    try:
-        data = _extract_json(
-            provider.chat(
-                _BOARD_REPAIR_SYSTEM,
-                user,
-                json_mode=True,
-                json_schema=_BOARD_REPAIR_JSON_SCHEMA,
-            )
-        )
-    except (ValueError, json.JSONDecodeError):
-        return beats, False
-
-    raw_repairs = data.get("beats")
-    if not isinstance(raw_repairs, list):
-        return beats, False
-    repairs = {
-        item.get("index"): item.get("actions")
-        for item in raw_repairs
-        if isinstance(item, dict)
-        and not isinstance(item.get("index"), bool)
-        and isinstance(item.get("index"), int)
-    }
-    for beat in beats:
-        if beat.index not in target_indices:
-            continue
-        actions = _normalize_board_actions(repairs.get(beat.index), beat.index)
-        if actions:
-            beat.board.actions = actions
-
-    repaired = all(beat.board.actions for beat in beats if beat.index in target_indices)
-    return beats, repaired
 
 
 def prepare_lesson(
@@ -681,7 +375,7 @@ def prepare_lesson(
     topic: str,
     prompt_context: str | None = None,
 ) -> ClassroomLessonOut:
-    """Ground a topic and return a playable lesson plan, or say it is out of scope."""
+    """Ground a topic and return a playable slide lesson, or say it is out of scope."""
     settings = get_settings()
     provider = get_provider()
     cleaned = " ".join((topic or "").split())[:2000]
@@ -715,7 +409,7 @@ def prepare_lesson(
     reason = data.get("reason")
     reason_text = " ".join(str(reason).split())[:240] if reason else None
     beats = _normalize_beats(data.get("beats")) if in_scope else []
-    if not in_scope or not beats:
+    if not in_scope:
         return _out_of_scope(
             cleaned,
             reason_text
@@ -723,17 +417,10 @@ def prepare_lesson(
             "Pick a topic from the course.",
             ctx,
         )
-
-    beats, board_ready = _repair_missing_board_actions(
-        provider,
-        beats,
-        cleaned,
-        context,
-    )
-    if not board_ready or not any(beat.board.actions for beat in beats):
+    if len(beats) < _MIN_BEATS:
         return _out_of_scope(
             cleaned,
-            "I couldn't build a reliable whiteboard for that lesson. Please try again.",
+            "I couldn't build a reliable lesson for that topic. Please try again.",
             ctx,
         )
 

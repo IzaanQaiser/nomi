@@ -62,7 +62,7 @@ class MockProvider(LLMProvider):
         snippet = context[:400].replace("\n", " ")
         if "exactly three short topic names" in system:
             return '["control theory", "compensators", "lead/lag plots"]'
-        if "Prepare a classroom lesson plan" in system:
+        if "lesson planner" in system:
             topic = ""
             if "Topic:" in user:
                 topic = user.split("Topic:", 1)[1].split("\n", 1)[0].strip()
@@ -91,60 +91,35 @@ class MockProvider(LLMProvider):
                         {
                             "title": "The idea",
                             "speaking": (
-                                "Start with the core definition from the notes."
+                                "Start with the core definition from the notes, "
+                                "then we'll build the picture around it."
                             ),
-                            "board": {
-                                "kind": "list",
-                                "instruction": "Write the core definition.",
-                                "actions": [
-                                    {
-                                        "type": "write_text",
-                                        "text": "Core definition",
-                                        "position": {"x": 0.10, "y": 0.12},
-                                        "style": "heading",
-                                    }
-                                ],
+                            "slide": {
+                                "layout": "concept",
+                                "title": "Core definition",
+                                "body": "What this idea is, in one short sentence.",
                             },
                         },
                         {
                             "title": "How it works",
                             "speaking": "Walk through the method used in the sources.",
-                            "board": {
-                                "kind": "diagram",
-                                "instruction": "Sketch the main relationship.",
-                                "actions": [
-                                    {
-                                        "type": "draw_rectangle",
-                                        "frame": {
-                                            "x": 0.12,
-                                            "y": 0.35,
-                                            "width": 0.24,
-                                            "height": 0.16,
-                                        },
-                                        "style": "outline",
-                                    },
-                                    {
-                                        "type": "draw_arrow",
-                                        "start": {"x": 0.36, "y": 0.43},
-                                        "end": {"x": 0.58, "y": 0.43},
-                                    },
-                                ],
+                            "slide": {
+                                "layout": "diagram",
+                                "title": "The relationship",
+                                "caption": "Cause flows into effect.",
+                                "mermaid": (
+                                    "flowchart LR\n"
+                                    "  Input --> Plant --> Output"
+                                ),
                             },
                         },
                         {
                             "title": "A concrete case",
                             "speaking": "Apply it to one example from the notes.",
-                            "board": {
-                                "kind": "equation",
-                                "instruction": "Write the key relation.",
-                                "actions": [
-                                    {
-                                        "type": "write_text",
-                                        "text": "Key relation",
-                                        "position": {"x": 0.12, "y": 0.65},
-                                        "style": "equation",
-                                    }
-                                ],
+                            "slide": {
+                                "layout": "equation",
+                                "title": "Key relation",
+                                "equation": "G(s) = K (s + z) / (s + p)",
                             },
                         },
                         {
@@ -152,7 +127,11 @@ class MockProvider(LLMProvider):
                             "speaking": (
                                 "Ask the student to restate the idea in one sentence."
                             ),
-                            "board": {"kind": "none", "instruction": "", "actions": []},
+                            "slide": {
+                                "layout": "checkpoint",
+                                "title": "Check your understanding",
+                                "question": "Restate the idea in one sentence.",
+                            },
                         },
                     ],
                 }

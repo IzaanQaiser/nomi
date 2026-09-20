@@ -2,9 +2,6 @@ import Foundation
 import Observation
 
 /// Deterministic runtime for a prepared classroom lesson.
-///
-/// PencilKit can observe `currentBeat` and `visibleBeats` later without moving
-/// transport or narration logic into the view layer.
 @MainActor
 @Observable
 final class ClassroomLessonPlayer {
@@ -25,36 +22,6 @@ final class ClassroomLessonPlayer {
     var currentBeat: ClassroomLessonBeat? {
         guard let lesson, lesson.beats.indices.contains(currentBeatIndex) else { return nil }
         return lesson.beats[currentBeatIndex]
-    }
-
-    /// Ordered command stream revealed at the exact current playback position.
-    /// Replaying it from an empty Nomi layer reconstructs pause and seek state.
-    var revealedBoardActions: [ClassroomBoardAction] {
-        guard let lesson, lesson.beats.indices.contains(currentBeatIndex) else { return [] }
-
-        var result = lesson.beats
-            .prefix(currentBeatIndex)
-            .flatMap(\.board.actions)
-            .filter(\.isSupported)
-
-        let currentActions = lesson.beats[currentBeatIndex].board.actions.filter(\.isSupported)
-        for (index, action) in currentActions.enumerated()
-            where revealProgress(for: action, index: index, count: currentActions.count)
-                <= narrationProgress + 0.000_1 {
-            result.append(action)
-        }
-        return result
-    }
-
-    /// Current semantic board contents after applying explicit clear actions.
-    var resolvedBoardActions: [ClassroomBoardAction] {
-        revealedBoardActions.reduce(into: []) { result, action in
-            if action.isClear {
-                result.removeAll(keepingCapacity: true)
-            } else {
-                result.append(action)
-            }
-        }
     }
 
     var progress: Double {
@@ -185,17 +152,5 @@ final class ClassroomLessonPlayer {
         narrator.stop()
         narrationProgress = 1
         playbackState = .completed
-    }
-
-    private func revealProgress(
-        for action: ClassroomBoardAction,
-        index: Int,
-        count: Int
-    ) -> Double {
-        if let revealAt = action.revealAt, revealAt.isFinite {
-            return min(1, max(0, revealAt))
-        }
-        guard count > 1 else { return 0.08 }
-        return 0.08 + (0.84 * Double(index) / Double(count - 1))
     }
 }

@@ -1,5 +1,6 @@
 import os
 import unittest
+from unittest.mock import patch
 
 os.environ["LLM_PROVIDER"] = "mock"
 os.environ["DATABASE_URL"] = "sqlite:///:memory:"
@@ -9,7 +10,6 @@ from app.models import Project, Source  # noqa: E402
 from app.services.classroom import (  # noqa: E402
     _normalize_beats,
     _parse_suggestions,
-    _repair_missing_board_actions,
     prepare_lesson,
     suggest_topics,
     teach,
@@ -30,187 +30,201 @@ class SuggestionParseTests(unittest.TestCase):
         self.assertEqual(_parse_suggestions('["only two", "topics"]'), [])
 
 
-class BoardProtocolTests(unittest.TestCase):
-    def test_actions_are_typed_clamped_and_server_identified(self):
+class SlideProtocolTests(unittest.TestCase):
+    def test_valid_slides_are_parsed_and_indexed(self):
         beats = _normalize_beats(
             [
                 {
-                    "title": "Feedback loop",
-                    "speaking": "A feedback loop compares output with the reference.",
+                    "title": "The idea",
+                    "speaking": "Here is the core definition from the notes.",
+                    "slide": {
+                        "layout": "concept",
+                        "title": "Feedback",
+                        "body": "Compare output with the reference.",
+                    },
+                },
+                {
+                    "title": "The picture",
+                    "speaking": "A loop makes the relationship visible.",
+                    "slide": {
+                        "layout": "diagram",
+                        "title": "Loop",
+                        "mermaid": "flowchart LR\n  Ref --> Plant --> Output",
+                    },
+                },
+                {
+                    "title": "The relation",
+                    "speaking": "Write the transfer function next.",
+                    "slide": {
+                        "layout": "equation",
+                        "title": "G(s)",
+                        "equation": "G(s) = Y(s)/U(s)",
+                    },
+                },
+                {
+                    "title": "Check",
+                    "speaking": "Restate the idea before we continue.",
+                    "slide": {
+                        "layout": "checkpoint",
+                        "title": "Pause",
+                        "question": "What does the plant do?",
+                    },
+                },
+            ]
+        )
+        self.assertEqual(len(beats), 4)
+        self.assertEqual([beat.index for beat in beats], [0, 1, 2, 3])
+        self.assertEqual(beats[0].slide.layout, "concept")
+        self.assertEqual(beats[1].slide.layout, "diagram")
+        self.assertIn("flowchart", beats[1].slide.mermaid)
+        self.assertEqual(beats[2].slide.equation, "G(s) = Y(s)/U(s)")
+        self.assertEqual(beats[3].slide.question, "What does the plant do?")
+        self.assertTrue(all(beat.slide.title for beat in beats))
+
+    def test_unsupported_layouts_and_board_payloads_are_dropped(self):
+        beats = _normalize_beats(
+            [
+                {
+                    "title": "Old board beat",
+                    "speaking": "This should not become a slide.",
                     "board": {
                         "kind": "diagram",
-                        "instruction": "Sketch the loop.",
                         "actions": [
                             {
-                                "id": "model-controlled-id",
                                 "type": "write_text",
-                                "text": "  Reference   input  ",
-                                "position": {"x": -0.5, "y": 1.5},
-                                "style": "not-a-style",
-                            },
-                            {
-                                "type": "draw_arrow",
-                                "start": {"x": 0.2, "y": 0.3},
-                                "end": {"x": 0.8, "y": 0.3},
-                            },
-                            {"type": "draw_line", "start": {"x": 0.1, "y": 0.1}},
-                            {"type": "unknown", "text": "drop me"},
+                                "text": "Reference",
+                                "position": {"x": 0.1, "y": 0.2},
+                            }
                         ],
                     },
-                }
+                },
+                {
+                    "title": "Unknown layout",
+                    "speaking": "Drop malformed layouts instead of guessing.",
+                    "slide": {"layout": "poster", "title": "Nope", "body": "x"},
+                },
+                {
+                    "title": "Valid concept",
+                    "speaking": "This one is usable.",
+                    "slide": {
+                        "layout": "concept",
+                        "title": "Lead",
+                        "body": "Adds phase.",
+                    },
+                },
             ]
         )
-        actions = beats[0].board.actions
-        self.assertEqual([action.id for action in actions], ["b0-a0", "b0-a1"])
-        self.assertEqual(actions[0].type, "write_text")
-        self.assertEqual(actions[0].position.x, 0.0)
-        self.assertEqual(actions[0].position.y, 1.0)
-        self.assertEqual(actions[0].style, "body")
-        self.assertEqual(actions[1].type, "draw_arrow")
-        self.assertEqual(actions[0].reveal_at, 0.08)
-        self.assertEqual(actions[1].reveal_at, 0.92)
+        self.assertEqual(len(beats), 1)
+        self.assertEqual(beats[0].title, "Valid concept")
+        self.assertEqual(beats[0].slide.layout, "concept")
 
-    def test_reveal_timing_is_clamped_and_kept_in_action_order(self):
+    def test_diagram_requires_usable_mermaid(self):
         beats = _normalize_beats(
             [
                 {
-                    "title": "Timed board",
-                    "speaking": "First draw the axes, then label the response.",
-                    "board": {
-                        "actions": [
-                            {
-                                "type": "draw_axes",
-                                "reveal_at": 0.7,
-                                "frame": {
-                                    "x": 0.1,
-                                    "y": 0.1,
-                                    "width": 0.6,
-                                    "height": 0.6,
-                                },
-                            },
-                            {
-                                "type": "write_text",
-                                "reveal_at": 0.2,
-                                "text": "response",
-                                "position": {"x": 0.75, "y": 0.7},
-                            },
-                            {
-                                "type": "highlight",
-                                "reveal_at": 9,
-                                "frame": {
-                                    "x": 0.7,
-                                    "y": 0.65,
-                                    "width": 0.2,
-                                    "height": 0.1,
-                                },
-                            },
-                        ]
+                    "title": "Empty diagram",
+                    "speaking": "Missing mermaid should not survive.",
+                    "slide": {"layout": "diagram", "title": "Loop"},
+                },
+                {
+                    "title": "SVG diagram",
+                    "speaking": "SVG is not mermaid.",
+                    "slide": {
+                        "layout": "diagram",
+                        "title": "Loop",
+                        "mermaid": "<svg><rect/></svg>",
                     },
-                }
+                },
+                {
+                    "title": "Coordinate dump",
+                    "speaking": "Board commands are not mermaid.",
+                    "slide": {
+                        "layout": "diagram",
+                        "title": "Loop",
+                        "mermaid": (
+                            'flowchart LR\n  write_text {"reveal_at": 0.2}'
+                        ),
+                    },
+                },
+                {
+                    "title": "Good diagram",
+                    "speaking": "This flowchart is usable.",
+                    "slide": {
+                        "layout": "diagram",
+                        "title": "Loop",
+                        "mermaid": "```mermaid\nflowchart LR\n  A --> B\n```",
+                    },
+                },
             ]
         )
-        actions = beats[0].board.actions
-        self.assertEqual([action.reveal_at for action in actions], [0.7, 0.7, 0.96])
+        self.assertEqual(len(beats), 1)
+        self.assertEqual(beats[0].title, "Good diagram")
+        self.assertTrue(beats[0].slide.mermaid.startswith("flowchart"))
+        self.assertNotIn("```", beats[0].slide.mermaid)
 
-    def test_invalid_geometry_is_discarded(self):
+    def test_equation_and_checkpoint_required_content_is_enforced(self):
         beats = _normalize_beats(
             [
                 {
-                    "title": "Plot",
-                    "speaking": "Plot the response.",
-                    "board": {
-                        "actions": [
-                            {
-                                "type": "draw_rectangle",
-                                "frame": {"x": 1, "y": 1, "width": 1, "height": 1},
-                            },
-                            {"type": "plot_polyline", "points": [{"x": 0, "y": 0}]},
-                            {"type": "clear"},
-                        ]
-                    },
-                }
-            ]
-        )
-        self.assertEqual(len(beats[0].board.actions), 1)
-        self.assertEqual(beats[0].board.actions[0].type, "clear")
-
-    def test_missing_drawable_actions_are_repaired_and_revalidated(self):
-        beats = _normalize_beats(
-            [
+                    "title": "Bare equation",
+                    "speaking": "An equation slide needs an equation.",
+                    "slide": {"layout": "equation", "title": "G(s)"},
+                },
                 {
-                    "title": "Block diagram",
-                    "speaking": "The input enters the plant and produces an output.",
-                    "board": {
-                        "kind": "diagram",
-                        "instruction": "Draw the block diagram.",
-                        "actions": [],
-                    },
-                }
-            ]
-        )
-
-        class RepairProvider:
-            def chat(self, system, user, *, json_mode=False, json_schema=None):
-                self.json_mode = json_mode
-                self.json_schema = json_schema
-                return """{
-                    "beats": [{
-                        "index": 0,
-                        "actions": [
-                            {
-                                "type": "write_text",
-                                "reveal_at": 0.1,
-                                "text": "input",
-                                "position": {"x": 0.1, "y": 0.4},
-                                "style": "label"
-                            },
-                            {
-                                "type": "draw_rectangle",
-                                "reveal_at": 0.4,
-                                "frame": {
-                                    "x": 0.35, "y": 0.3,
-                                    "width": 0.3, "height": 0.2
-                                },
-                                "style": "outline"
-                            }
-                        ]
-                    }]
-                }"""
-
-        provider = RepairProvider()
-        repaired, ready = _repair_missing_board_actions(
-            provider, beats, "block diagrams", "course context"
-        )
-        self.assertTrue(ready)
-        self.assertTrue(provider.json_mode)
-        self.assertIsNotNone(provider.json_schema)
-        self.assertEqual(len(repaired[0].board.actions), 2)
-        self.assertEqual(repaired[0].board.actions[0].id, "b0-a0")
-
-    def test_failed_board_repair_is_not_accepted(self):
-        beats = _normalize_beats(
-            [
+                    "title": "Bare checkpoint",
+                    "speaking": "A checkpoint needs a question.",
+                    "slide": {"layout": "checkpoint", "title": "Check"},
+                },
                 {
-                    "title": "Block diagram",
-                    "speaking": "Here is the system.",
-                    "board": {
-                        "kind": "diagram",
-                        "instruction": "Draw the system.",
-                        "actions": [],
+                    "title": "Empty bullets",
+                    "speaking": "Bullet slides need bullets.",
+                    "slide": {"layout": "bullets", "title": "Points", "bullets": []},
+                },
+                {
+                    "title": "Good equation",
+                    "speaking": "Here is the transfer function.",
+                    "slide": {
+                        "layout": "equation",
+                        "title": "G(s)",
+                        "equation": "G(s) = K / s",
                     },
-                }
+                },
+                {
+                    "title": "Good checkpoint",
+                    "speaking": "Try this check.",
+                    "slide": {
+                        "layout": "checkpoint",
+                        "title": "Check",
+                        "question": "What does K do?",
+                    },
+                },
             ]
         )
+        self.assertEqual([beat.title for beat in beats], ["Good equation", "Good checkpoint"])
+        self.assertEqual(beats[0].slide.equation, "G(s) = K / s")
+        self.assertEqual(beats[1].slide.question, "What does K do?")
 
-        class EmptyRepairProvider:
-            def chat(self, system, user, *, json_mode=False, json_schema=None):
-                return '{"beats":[{"index":0,"actions":[]}]}'
-
-        repaired, ready = _repair_missing_board_actions(
-            EmptyRepairProvider(), beats, "systems", "course context"
-        )
-        self.assertFalse(ready)
-        self.assertEqual(repaired[0].board.actions, [])
+    def test_beats_are_capped_and_fields_are_bounded(self):
+        raw = [
+            {
+                "title": f"Beat {index}",
+                "speaking": f"Narration {index} " + ("word " * 400),
+                "slide": {
+                    "layout": "bullets",
+                    "title": "Title " + ("long " * 40),
+                    "bullets": [f"point {n} " + ("x" * 200) for n in range(12)],
+                    "body": "body " + ("y" * 500),
+                },
+            }
+            for index in range(12)
+        ]
+        beats = _normalize_beats(raw)
+        self.assertEqual(len(beats), 8)
+        self.assertLessEqual(len(beats[0].speaking), 800)
+        self.assertLessEqual(len(beats[0].slide.title), 80)
+        self.assertLessEqual(len(beats[0].slide.body), 400)
+        self.assertEqual(len(beats[0].slide.bullets), 6)
+        self.assertLessEqual(len(beats[0].slide.bullets[0]), 140)
 
 
 class ClassroomServiceTests(unittest.TestCase):
@@ -274,7 +288,7 @@ class ClassroomServiceTests(unittest.TestCase):
         self.assertEqual(lesson.beats, [])
         self.assertEqual(lesson.grounding, "empty")
 
-    def test_prepare_in_scope_returns_beats_and_passages(self):
+    def test_prepare_in_scope_returns_slide_beats_and_passages(self):
         self._ready_source(
             "Compensators",
             "A lead compensator increases phase margin and speeds the "
@@ -282,13 +296,37 @@ class ClassroomServiceTests(unittest.TestCase):
         )
         lesson = prepare_lesson(self.db, self.project.id, "lead compensators")
         self.assertTrue(lesson.in_scope)
-        self.assertGreaterEqual(len(lesson.beats), 3)
+        self.assertEqual(lesson.lesson_protocol_version, 1)
+        self.assertGreaterEqual(len(lesson.beats), 4)
+        self.assertLessEqual(len(lesson.beats), 8)
         self.assertTrue(lesson.sources)
+        self.assertTrue(lesson.citations)
         self.assertTrue(lesson.passages)
         self.assertEqual(lesson.grounding, "full")
-        self.assertEqual(lesson.board_protocol_version, 2)
         self.assertTrue(all(beat.speaking for beat in lesson.beats))
-        self.assertTrue(any(beat.board.actions for beat in lesson.beats))
+        self.assertTrue(all(beat.slide.layout for beat in lesson.beats))
+        self.assertTrue(
+            any(beat.slide.layout == "diagram" and beat.slide.mermaid for beat in lesson.beats)
+        )
+        payload = lesson.model_dump()
+        self.assertNotIn("board_protocol_version", payload)
+        self.assertFalse(any("board" in beat for beat in payload["beats"]))
+        self.assertTrue(all("slide" in beat for beat in payload["beats"]))
+
+    def test_prepare_rejects_too_few_usable_slides(self):
+        self._ready_source(
+            "Compensators",
+            "A lead compensator increases phase margin and speeds the "
+            "transient response.",
+        )
+        with patch(
+            "app.services.classroom._normalize_beats",
+            return_value=[],
+        ):
+            lesson = prepare_lesson(self.db, self.project.id, "lead compensators")
+        self.assertFalse(lesson.in_scope)
+        self.assertEqual(lesson.beats, [])
+        self.assertTrue(lesson.sources)
 
     def test_prepare_unrelated_topic_is_out_of_scope(self):
         self._ready_source(
@@ -300,3 +338,5 @@ class ClassroomServiceTests(unittest.TestCase):
         self.assertFalse(lesson.in_scope)
         self.assertEqual(lesson.beats, [])
         self.assertTrue(lesson.reason)
+        self.assertTrue(lesson.sources)
+        self.assertTrue(lesson.passages)
