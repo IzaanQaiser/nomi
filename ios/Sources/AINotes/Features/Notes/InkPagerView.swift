@@ -271,8 +271,18 @@ final class NotesCanvasView: PKCanvasView {
 
     override func canPerformAction(_ action: Selector, withSender sender: Any?) -> Bool {
         if action == #selector(paste(_:)) {
-            if UIPasteboard.general.hasImages { return true }
-            if Self.drawingFromPasteboard() != nil { return true }
+            return UIPasteboard.general.hasImages || Self.drawingFromPasteboard() != nil
+        }
+        // Hide PencilKit's blank-canvas edit items (Select / Select All / Insert
+        // Space) so a long-press over a clipboard image offers just "Paste".
+        // The pen island owns the lasso; copy/cut/delete still work on an active
+        // lasso selection (they fall through to super).
+        if action == #selector(select(_:)) || action == #selector(selectAll(_:)) {
+            return false
+        }
+        let name = NSStringFromSelector(action).lowercased()
+        if name.contains("insertspace") || name.contains("insert_space") {
+            return false
         }
         return super.canPerformAction(action, withSender: sender)
     }
@@ -336,14 +346,19 @@ final class InkPageController: UIViewController, PKCanvasViewDelegate, UIScrollV
     private var lastStrokeCount = 0
     private var isMutatingDrawing = false   // guard against re-entrant drawing edits
 
-    /// Smallest a photo can be pinched down to (canonical points).
+    /// Smallest a photo can be shrunk to (canonical points).
     private let minImageSide: CGFloat = 60
     /// Tap target (canonical points) for the corner delete badge.
-    private let deleteBadgeSide: CGFloat = 56
+    private let deleteBadgeSide: CGFloat = 38
+    /// How near a corner a finger must land to grab a resize handle.
+    private let cornerHitRadius: CGFloat = 64
+
+    enum ResizeCorner { case topLeft, topRight, bottomLeft, bottomRight }
 
     // Live gesture state while dragging / resizing a photo with a finger.
     private var activeImageID: String?
     private var gestureStartFrame: CGRect = .zero
+    private var activeCorner: ResizeCorner?
 
     init(pageIndex: Int,
          canonicalSize: CGSize,
@@ -378,10 +393,10 @@ final class InkPageController: UIViewController, PKCanvasViewDelegate, UIScrollV
         canvasView.contentSize = canonicalSize
         canvasView.delegate = self
         canvasView.onPasteImage = { [weak self] image in
-            self?.insertPastedImage(image)
+            self?.insertPastedImage(image, at: self?.pasteLocation)
         }
         canvasView.onPasteDrawing = { [weak self] drawing in
-            self?.insertPastedDrawing(drawing)
+            self?.insertPastedDrawing(drawing, at: self?.pasteLocation)
         }
         view.addSubview(canvasView)
 
@@ -442,15 +457,32 @@ final class InkPageController: UIViewController, PKCanvasViewDelegate, UIScrollV
     }
 
     private lazy var editMenuInteraction = UIEditMenuInteraction(delegate: self)
-    /// Content-space point where the next paste should land.
-    private var pasteLocation: CGPoint = .zero
+    /// Content-space point where the next paste should land (nil = page center).
+    private var pasteLocation: CGPoint?
 
     @objc private func handleLongPress(_ g: UILongPressGestureRecognizer) {
         guard g.state == .began, let content = contentView else { return }
-        guard UIPasteboard.general.hasImages || NotesCanvasView.drawingFromPasteboard() != nil else { return }
         pasteLocation = g.location(in: content)
-        let config = UIEditMenuConfiguration(identifier: nil, sourcePoint: g.location(in: canvasView))
-        editMenuInteraction.presentEditMenu(with: config)
+        guard UIPasteboard.general.hasImages || NotesCanvasView.drawingFromPasteboard() != nil else { return }
+        // PencilKit shows its own "Select All / Insert Space" menu on long-press;
+        // drop it so only our Paste menu appears.
+        removeSystemEditMenus(in: canvasView)
+        let point = g.location(in: canvasView)
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            let config = UIEditMenuConfiguration(identifier: nil, sourcePoint: point)
+            self.editMenuInteraction.presentEditMenu(with: config)
+        }
+    }
+
+    /// Remove PencilKit's built-in edit-menu interactions (ours is preserved) so
+    /// the blank-canvas menu doesn't compete with our Paste menu.
+    private func removeSystemEditMenus(in view: UIView) {
+        for interaction in view.interactions
+        where interaction is UIEditMenuInteraction && !(interaction === editMenuInteraction) {
+            view.removeInteraction(interaction)
+        }
+        for sub in view.subviews { removeSystemEditMenus(in: sub) }
     }
 
     private func pasteAtPasteLocation() {
@@ -769,24 +801,82 @@ final class InkPageController: UIViewController, PKCanvasViewDelegate, UIScrollV
             // Undo the just-applied translation to recover the touch-down point.
             let t0 = g.translation(in: content)
             let down = CGPoint(x: start.x - t0.x, y: start.y - t0.y)
-            guard let id = topImageID(at: down), let f = frame(of: id) else {
+            // Grabbing a corner of the selected photo resizes; otherwise move.
+            if let sid = selectedID, let f = frame(of: sid), let corner = cornerHit(f, down) {
+                activeImageID = sid
+                gestureStartFrame = f
+                activeCorner = corner
+            } else if let id = topImageID(at: down), let f = frame(of: id) {
+                activeImageID = id
+                gestureStartFrame = f
+                activeCorner = nil
+                selectOverlay(id: id)
+            } else {
                 activeImageID = nil
                 return
             }
-            activeImageID = id
-            gestureStartFrame = f
-            selectOverlay(id: id)
+            canvasView.isScrollEnabled = false   // don't pan the page while dragging
         case .changed:
             guard let id = activeImageID else { return }
-            let t = g.translation(in: content)
-            let next = gestureStartFrame.offsetBy(dx: t.x, dy: t.y)
-            setFrame(next, for: id, persist: false)
+            setFrame(frameForPan(g.translation(in: content)), for: id, persist: false)
         case .ended, .cancelled:
-            if let id = activeImageID { setFrame(frame(of: id) ?? gestureStartFrame, for: id, persist: true) }
+            if let id = activeImageID {
+                setFrame(frameForPan(g.translation(in: content)), for: id, persist: true)
+            }
             activeImageID = nil
+            activeCorner = nil
+            canvasView.isScrollEnabled = true
         default:
             break
         }
+    }
+
+    /// The frame during a pan: a resize when a corner was grabbed, else a move.
+    private func frameForPan(_ t: CGPoint) -> CGRect {
+        if let corner = activeCorner {
+            return resized(gestureStartFrame, corner: corner, dx: t.x, dy: t.y)
+        }
+        return gestureStartFrame.offsetBy(dx: t.x, dy: t.y)
+    }
+
+    /// Which corner of `frame` the point is grabbing, if any.
+    private func cornerHit(_ frame: CGRect, _ point: CGPoint) -> ResizeCorner? {
+        let corners: [(ResizeCorner, CGPoint)] = [
+            (.topLeft, CGPoint(x: frame.minX, y: frame.minY)),
+            (.topRight, CGPoint(x: frame.maxX, y: frame.minY)),
+            (.bottomLeft, CGPoint(x: frame.minX, y: frame.maxY)),
+            (.bottomRight, CGPoint(x: frame.maxX, y: frame.maxY)),
+        ]
+        for (corner, p) in corners where hypot(point.x - p.x, point.y - p.y) <= cornerHitRadius {
+            return corner
+        }
+        return nil
+    }
+
+    /// Aspect-locked resize about the opposite corner.
+    private func resized(_ start: CGRect, corner: ResizeCorner, dx: CGFloat, dy: CGFloat) -> CGRect {
+        let aspect = start.width / max(start.height, 1)
+        // Anchor = the corner that stays put (opposite the one being dragged).
+        let anchor: CGPoint
+        let signX: CGFloat   // +1 if the dragged corner is to the right of the anchor
+        let signY: CGFloat
+        switch corner {
+        case .bottomRight: anchor = CGPoint(x: start.minX, y: start.minY); signX = 1;  signY = 1
+        case .bottomLeft:  anchor = CGPoint(x: start.maxX, y: start.minY); signX = -1; signY = 1
+        case .topRight:    anchor = CGPoint(x: start.minX, y: start.maxY); signX = 1;  signY = -1
+        case .topLeft:     anchor = CGPoint(x: start.maxX, y: start.maxY); signX = -1; signY = -1
+        }
+        let proposedW = start.width + signX * dx
+        let proposedH = start.height + signY * dy
+        // Follow the finger loosely while keeping the photo's aspect ratio.
+        let scale = max(proposedW / start.width, proposedH / start.height)
+        var w = max(minImageSide, start.width * scale)
+        var h = max(minImageSide, start.height * scale)
+        // Preserve aspect after the min clamp.
+        if w / h > aspect { h = w / aspect } else { w = h * aspect }
+        let originX = signX >= 0 ? anchor.x : anchor.x - w
+        let originY = signY >= 0 ? anchor.y : anchor.y - h
+        return CGRect(x: originX, y: originY, width: w, height: h)
     }
 
     @objc private func handleImagePinch(_ g: UIPinchGestureRecognizer) {
@@ -803,22 +893,27 @@ final class InkPageController: UIViewController, PKCanvasViewDelegate, UIScrollV
             activeImageID = id
             gestureStartFrame = f
             selectOverlay(id: id)
+            canvasView.isScrollEnabled = false
         case .changed:
             guard let id = activeImageID else { return }
-            let scale = g.scale
-            let minScale = minImageSide / min(gestureStartFrame.width, gestureStartFrame.height)
-            let s = max(scale, minScale)
-            let newW = gestureStartFrame.width * s
-            let newH = gestureStartFrame.height * s
-            let center = CGPoint(x: gestureStartFrame.midX, y: gestureStartFrame.midY)
-            let next = CGRect(x: center.x - newW / 2, y: center.y - newH / 2, width: newW, height: newH)
-            setFrame(next, for: id, persist: false)
+            setFrame(pinchedFrame(g.scale), for: id, persist: false)
         case .ended, .cancelled:
-            if let id = activeImageID { setFrame(frame(of: id) ?? gestureStartFrame, for: id, persist: true) }
+            if let id = activeImageID { setFrame(pinchedFrame(g.scale), for: id, persist: true) }
             activeImageID = nil
+            canvasView.isScrollEnabled = true
         default:
             break
         }
+    }
+
+    /// A two-finger pinch scales the photo about its center.
+    private func pinchedFrame(_ scale: CGFloat) -> CGRect {
+        let minScale = minImageSide / min(gestureStartFrame.width, gestureStartFrame.height)
+        let s = max(scale, minScale)
+        let newW = gestureStartFrame.width * s
+        let newH = gestureStartFrame.height * s
+        let center = CGPoint(x: gestureStartFrame.midX, y: gestureStartFrame.midY)
+        return CGRect(x: center.x - newW / 2, y: center.y - newH / 2, width: newW, height: newH)
     }
 
     // MARK: PKCanvasViewDelegate
@@ -867,9 +962,16 @@ final class InkPageController: UIViewController, PKCanvasViewDelegate, UIScrollV
     /// empty-space tap deselects).
     func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
         guard gestureRecognizer.delegate === self else { return true }
+        // Tap (deselect) and long-press (paste) may begin anywhere; only the
+        // photo pan/pinch are gated to starting on a photo.
         if gestureRecognizer is UITapGestureRecognizer { return true }
+        if gestureRecognizer is UILongPressGestureRecognizer { return true }
         guard let content = contentView else { return false }
-        return topImageID(at: gestureRecognizer.location(in: content)) != nil
+        let point = gestureRecognizer.location(in: content)
+        if topImageID(at: point) != nil { return true }
+        // Also begin when grabbing a resize handle just outside the selection.
+        if let sid = selectedID, let f = frame(of: sid), cornerHit(f, point) != nil { return true }
+        return false
     }
 }
 
@@ -887,13 +989,25 @@ final class SelectionOverlayView: UIView {
         ctx.setLineWidth(2)
         ctx.stroke(sel)
 
+        // Corner resize handles.
+        let r: CGFloat = 9
+        for c in [CGPoint(x: sel.minX, y: sel.minY), CGPoint(x: sel.maxX, y: sel.minY),
+                  CGPoint(x: sel.minX, y: sel.maxY), CGPoint(x: sel.maxX, y: sel.maxY)] {
+            let dot = CGRect(x: c.x - r, y: c.y - r, width: r * 2, height: r * 2)
+            ctx.setFillColor(UIColor.white.cgColor)
+            ctx.fillEllipse(in: dot)
+            ctx.setStrokeColor(UIColor.systemBlue.cgColor)
+            ctx.setLineWidth(2)
+            ctx.strokeEllipse(in: dot)
+        }
+
         guard let badge = deleteBadge else { return }
         ctx.setFillColor(UIColor.systemRed.cgColor)
         ctx.fillEllipse(in: badge)
         ctx.setStrokeColor(UIColor.white.cgColor)
-        ctx.setLineWidth(max(3, badge.width * 0.09))
+        ctx.setLineWidth(max(2.5, badge.width * 0.1))
         ctx.setLineCap(.round)
-        let inset = badge.insetBy(dx: badge.width * 0.3, dy: badge.height * 0.3)
+        let inset = badge.insetBy(dx: badge.width * 0.32, dy: badge.height * 0.32)
         ctx.move(to: CGPoint(x: inset.minX, y: inset.minY))
         ctx.addLine(to: CGPoint(x: inset.maxX, y: inset.maxY))
         ctx.move(to: CGPoint(x: inset.maxX, y: inset.minY))

@@ -36,9 +36,11 @@ final class ShadowingEngine: ObservableObject {
 
     private let projectId: String
 
-    // Tuning (long cooldown so a free Gemini key isn't drained by watching)
+    // Tuning. Each *pause* re-scans (as long as there's new ink since the last
+    // scan); the short `cooldown` only stops back-to-back calls, so a second
+    // pause no longer waits out a full minute.
     private let pauseDelay: TimeInterval = 4.0     // quiet time before a check
-    private let cooldown: TimeInterval = 60        // min seconds between auto-checks
+    private let cooldown: TimeInterval = 6         // min seconds between auto-checks
     private let longWritingWindow: TimeInterval = 90  // safety check while writing nonstop
     private let minStrokes = 3
 
