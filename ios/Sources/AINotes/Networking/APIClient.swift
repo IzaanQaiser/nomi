@@ -90,23 +90,34 @@ actor APIClient {
         )
     }
 
-    func uploadPDF(projectId: String, fileURL: URL) async throws -> Source {
+    func uploadSourceFile(projectId: String, fileURL: URL) async throws -> Source {
         let boundary = "Boundary-\(UUID().uuidString)"
-        var req = try request(path: "/projects/\(projectId)/sources/pdf", method: "POST")
+        var req = try request(path: "/projects/\(projectId)/sources/file", method: "POST")
         req.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
 
         let filename = fileURL.lastPathComponent
+        let contentType: String
+        switch fileURL.pathExtension.lowercased() {
+        case "pdf": contentType = "application/pdf"
+        case "docx": contentType = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        case "png": contentType = "image/png"
+        default: throw APIError.badStatus(415, "Supported file types are .pdf, .docx, and .png")
+        }
         let fileData = try Data(contentsOf: fileURL)
         var body = Data()
         body.append("--\(boundary)\r\n")
         body.append("Content-Disposition: form-data; name=\"file\"; filename=\"\(filename)\"\r\n")
-        body.append("Content-Type: application/pdf\r\n\r\n")
+        body.append("Content-Type: \(contentType)\r\n\r\n")
         body.append(fileData)
         body.append("\r\n--\(boundary)--\r\n")
         req.httpBody = body
 
         let data = try await send(req, session: llmSession)
         return try decode(data)
+    }
+
+    func uploadPDF(projectId: String, fileURL: URL) async throws -> Source {
+        try await uploadSourceFile(projectId: projectId, fileURL: fileURL)
     }
 
     func deleteSource(projectId: String, sourceId: String) async throws {

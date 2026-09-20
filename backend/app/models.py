@@ -47,7 +47,7 @@ class Source(Base):
     project_id: Mapped[str] = mapped_column(
         ForeignKey("projects.id", ondelete="CASCADE"), index=True
     )
-    kind: Mapped[str] = mapped_column(String, nullable=False)  # "pdf" | "text"
+    kind: Mapped[str] = mapped_column(String, nullable=False)  # pdf|docx|png|text
     title: Mapped[str] = mapped_column(String, nullable=False)
     storage_path: Mapped[str | None] = mapped_column(String, nullable=True)
     status: Mapped[str] = mapped_column(String, default="pending")  # pending|ready|error

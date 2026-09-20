@@ -57,6 +57,8 @@ class MockProvider(LLMProvider):
     def vision(
         self, system: str, user: str, image_base64: str, *, json_mode: bool = False
     ) -> str:
+        if "precise OCR system" in system:
+            return "Mock OCR text from uploaded PNG."
         # Infer-problem pass: we can't actually read the image, so stay honest.
         if "Identify the single problem" in system or "What problem is on this page" in user:
             return "unknown"

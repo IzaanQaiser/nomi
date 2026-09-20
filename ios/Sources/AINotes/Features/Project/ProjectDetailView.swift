@@ -660,10 +660,10 @@ private struct ContextSourceRow: View {
         HStack(spacing: 13) {
             ZStack {
                 RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .fill(source.kind == "pdf" ? Color.red.opacity(0.09) : NomiTheme.blue.opacity(0.09))
-                Image(systemName: source.kind == "pdf" ? "doc.fill" : "text.alignleft")
+                    .fill(iconColor.opacity(0.09))
+                Image(systemName: iconName)
                     .font(.title2)
-                    .foregroundStyle(source.kind == "pdf" ? Color.red : NomiTheme.blue)
+                    .foregroundStyle(iconColor)
             }
             .frame(width: 52, height: 52)
 
@@ -683,6 +683,18 @@ private struct ContextSourceRow: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .accessibilityElement(children: .combine)
+    }
+
+    private var iconName: String {
+        switch source.kind {
+        case "png": "photo.fill"
+        case "pdf", "docx": "doc.fill"
+        default: "text.alignleft"
+        }
+    }
+
+    private var iconColor: Color {
+        source.kind == "pdf" ? .red : NomiTheme.blue
     }
 
     private var detailText: String {

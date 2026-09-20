@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from pathlib import Path
 from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, File, HTTPException, Response, UploadFile
@@ -9,8 +10,8 @@ from sqlalchemy.orm import Session
 from ..db import SessionLocal, get_db
 from ..models import Project, Source
 from ..schemas import SourceOut, TextSourceCreate
-from ..services.file_store import delete_files, read_file, save_pdf
-from ..services.ingest import extract_pdf_text, ingest_source
+from ..services.file_store import delete_files, read_file, save_source_file
+from ..services.ingest import extract_source_text, ingest_source
 
 router = APIRouter(prefix="/projects/{project_id}/sources", tags=["sources"])
 log = logging.getLogger(__name__)
@@ -45,20 +46,20 @@ def _ingest_text_job(source_id: str, raw_text: str) -> None:
         db.close()
 
 
-def _ingest_pdf_job(source_id: str, storage_path: str) -> None:
+def _ingest_file_job(source_id: str, storage_path: str) -> None:
     db = SessionLocal()
     try:
         source = db.get(Source, source_id)
         if source is None:
             return
         try:
-            text = extract_pdf_text(read_file(storage_path))
+            text = extract_source_text(source.kind, read_file(storage_path))
         except Exception as exc:  # noqa: BLE001
-            _mark_error(db, source, f"PDF parse failed: {exc}")
+            _mark_error(db, source, f"File parse failed: {exc}")
             return
         ingest_source(db, source, text)
     except Exception as exc:
-        log.exception("pdf ingest failed for %s", source_id)
+        log.exception("file ingest failed for %s", source_id)
         source = db.get(Source, source_id)
         if source is not None:
             _mark_error(db, source, str(exc))
@@ -77,13 +78,13 @@ def recover_pending_sources() -> int:
             .all()
         )
         for sid, kind, path in pending:
-            if kind == "pdf":
+            if kind in {"pdf", "docx", "png"}:
                 if not path:
                     source = db.get(Source, sid)
                     if source is not None:
-                        _mark_error(db, source, "PDF file missing; please re-upload.")
+                        _mark_error(db, source, "Source file missing; please re-upload.")
                 else:
-                    _ingest_pdf_job(sid, path)
+                    _ingest_file_job(sid, path)
             else:
                 source = db.get(Source, sid)
                 if source is not None:
@@ -133,29 +134,57 @@ async def add_pdf_source(
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
 ) -> Source:
+    """Legacy PDF-only endpoint retained for older app builds."""
+    return await _add_file_source(project_id, file, db, required_kind="pdf")
+
+
+@router.post("/file", response_model=SourceOut, status_code=201)
+async def add_file_source(
+    project_id: str,
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+) -> Source:
+    return await _add_file_source(project_id, file, db)
+
+
+async def _add_file_source(
+    project_id: str,
+    file: UploadFile,
+    db: Session,
+    required_kind: str | None = None,
+) -> Source:
     _require_project(db, project_id)
-    if file.content_type not in (None, "application/pdf"):
-        raise HTTPException(415, "Only PDF uploads are supported")
+    filename = file.filename or "upload"
+    kind = Path(filename).suffix.lower().lstrip(".")
+    supported = {
+        "pdf": "application/pdf",
+        "docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        "png": "image/png",
+    }
+    if kind not in supported or (required_kind is not None and kind != required_kind):
+        raise HTTPException(415, "Supported file types are .pdf, .docx, and .png")
     content = await file.read()
     if not content:
-        raise HTTPException(400, "Uploaded PDF is empty")
+        raise HTTPException(400, "Uploaded file is empty")
+    if len(content) > 25 * 1024 * 1024:
+        raise HTTPException(413, "Source files must be 25 MB or smaller")
     try:
-        path = save_pdf(project_id, file.filename or "upload.pdf", content)
+        path = save_source_file(project_id, filename, content, supported[kind])
     except Exception as exc:
-        log.exception("PDF storage upload failed")
-        raise HTTPException(502, "Could not store PDF") from exc
+        log.exception("source storage upload failed")
+        raise HTTPException(502, "Could not store source file") from exc
 
     source = Source(
         project_id=project_id,
-        kind="pdf",
-        title=file.filename or "Uploaded PDF",
+        kind=kind,
+        title=filename,
         storage_path=path,
         status="pending",
     )
     db.add(source)
     db.commit()
     db.refresh(source)
-    _ingest_pdf_job(source.id, path)
+    _ingest_file_job(source.id, path)
     db.expire_all()
     return db.get(Source, source.id)
 
