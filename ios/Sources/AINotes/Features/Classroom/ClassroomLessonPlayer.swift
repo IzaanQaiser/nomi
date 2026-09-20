@@ -3,9 +3,8 @@ import Observation
 
 /// Deterministic runtime for a prepared classroom lesson.
 ///
-/// The player deliberately knows nothing about speech or PencilKit. Those
-/// systems can observe `currentBeat` and `visibleBeats` later without moving
-/// transport logic into the view layer.
+/// PencilKit can observe `currentBeat` and `visibleBeats` later without moving
+/// transport or narration logic into the view layer.
 @MainActor
 @Observable
 final class ClassroomLessonPlayer {
@@ -20,7 +19,7 @@ final class ClassroomLessonPlayer {
     private(set) var currentBeatIndex = 0
     private(set) var playbackState: PlaybackState = .ready
 
-    private var advanceTask: Task<Void, Never>?
+    private let narrator = ClassroomNarrator()
 
     var currentBeat: ClassroomLessonBeat? {
         guard let lesson, lesson.beats.indices.contains(currentBeatIndex) else { return nil }
@@ -53,15 +52,14 @@ final class ClassroomLessonPlayer {
     }
 
     func load(_ lesson: ClassroomLesson) {
-        advanceTask?.cancel()
+        narrator.stop()
         self.lesson = lesson
         currentBeatIndex = 0
         playbackState = .ready
     }
 
     func reset() {
-        advanceTask?.cancel()
-        advanceTask = nil
+        narrator.stop()
         lesson = nil
         currentBeatIndex = 0
         playbackState = .ready
@@ -81,20 +79,20 @@ final class ClassroomLessonPlayer {
     func play() {
         guard currentBeat != nil else { return }
         playbackState = .playing
-        scheduleAdvance()
+        if !narrator.resume() {
+            narrateCurrentBeat()
+        }
     }
 
     func pause() {
         guard playbackState == .playing else { return }
-        advanceTask?.cancel()
-        advanceTask = nil
+        narrator.pause()
         playbackState = .paused
     }
 
     func moveBackward() {
         guard canMoveBackward else { return }
-        advanceTask?.cancel()
-        advanceTask = nil
+        narrator.stop()
         currentBeatIndex -= 1
         playbackState = .paused
     }
@@ -105,52 +103,51 @@ final class ClassroomLessonPlayer {
             return
         }
         let wasPlaying = playbackState == .playing
-        advanceTask?.cancel()
-        advanceTask = nil
+        narrator.stop()
         currentBeatIndex += 1
         playbackState = wasPlaying ? .playing : .paused
-        if wasPlaying { scheduleAdvance() }
+        if wasPlaying { narrateCurrentBeat() }
     }
 
     func replay() {
         guard lesson?.beats.isEmpty == false else { return }
-        advanceTask?.cancel()
+        narrator.stop()
         currentBeatIndex = 0
         playbackState = .playing
-        scheduleAdvance()
+        narrateCurrentBeat()
     }
 
-    private func scheduleAdvance() {
-        advanceTask?.cancel()
-        guard let beat = currentBeat else { return }
-        let delay = previewDuration(for: beat)
-        advanceTask = Task { [weak self] in
-            try? await Task.sleep(for: .seconds(delay))
-            guard !Task.isCancelled else { return }
-            self?.advanceAfterPlayback()
+    /// Stop audio without discarding the prepared lesson or current position.
+    func stopPlayback() {
+        narrator.stop()
+        if playbackState == .playing {
+            playbackState = .paused
         }
     }
 
-    private func advanceAfterPlayback() {
+    private func narrateCurrentBeat() {
+        guard let beat = currentBeat else { return }
+        let expectedIndex = currentBeatIndex
+        narrator.speak(beat.speaking) { [weak self] in
+            guard let self,
+                  self.playbackState == .playing,
+                  self.currentBeatIndex == expectedIndex else { return }
+            self.advanceAfterNarration()
+        }
+    }
+
+    private func advanceAfterNarration() {
         guard playbackState == .playing else { return }
         if canMoveForward {
             currentBeatIndex += 1
-            scheduleAdvance()
+            narrateCurrentBeat()
         } else {
             complete()
         }
     }
 
     private func complete() {
-        advanceTask?.cancel()
-        advanceTask = nil
+        narrator.stop()
         playbackState = .completed
-    }
-
-    /// Temporary visual-reading cadence. Narration will replace this timer in
-    /// the next slice and call `moveForward()` when speech actually finishes.
-    private func previewDuration(for beat: ClassroomLessonBeat) -> Double {
-        let words = beat.speaking.split(whereSeparator: \.isWhitespace).count
-        return min(14, max(6, Double(words) / 3.2))
     }
 }

@@ -117,6 +117,7 @@ struct ClassroomView: View {
 
     @Environment(\.dismiss) private var dismiss
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.scenePhase) private var scenePhase
     @State private var session: ClassroomSession
     @State private var hasAppeared = false
     @State private var showLessonSources = false
@@ -152,6 +153,19 @@ struct ClassroomView: View {
             } else {
                 withAnimation(.easeOut(duration: 0.45)) { hasAppeared = true }
             }
+        }
+        .onChange(of: scenePhase) { _, phase in
+            if phase != .active {
+                session.player.stopPlayback()
+            }
+        }
+        .onChange(of: showLessonSources) { _, isPresented in
+            if isPresented {
+                session.player.stopPlayback()
+            }
+        }
+        .onDisappear {
+            session.player.stopPlayback()
         }
         .sheet(isPresented: $showLessonSources) {
             NavigationStack {

@@ -29,6 +29,7 @@
 		B8F35CF8163154C661E820F6 /* ChatView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AEFDC36DA86F377C78357395 /* ChatView.swift */; };
 		7E4A1C0B9F2D4E8A1B6C3D02 /* ClassroomView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7E4A1C0B9F2D4E8A1B6C3D01 /* ClassroomView.swift */; };
 		8F5B2D1C0A3E4F6B7C8D9E02 /* ClassroomLessonPlayer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8F5B2D1C0A3E4F6B7C8D9E01 /* ClassroomLessonPlayer.swift */; };
+		9A6C3E2D1B4F5A7C8D9E0F02 /* ClassroomNarrator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9A6C3E2D1B4F5A7C8D9E0F01 /* ClassroomNarrator.swift */; };
 		C5DB9AC741160E937F70C0DF /* ProjectDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1B8819978A4F153A485BB095 /* ProjectDetailView.swift */; };
 		CA82DD47EA7BAA6C2236D59D /* ProjectShellView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2150C64B92C8C4547D8384A1 /* ProjectShellView.swift */; };
 		CC4A090CCC1AD1E05867729B /* ExamStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = E139EE49834D2DA9A276C1A5 /* ExamStore.swift */; };
@@ -74,6 +75,7 @@
 		CAD6BAC7BCA677FCECB4746F /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		7E4A1C0B9F2D4E8A1B6C3D01 /* ClassroomView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClassroomView.swift; sourceTree = "<group>"; };
 		8F5B2D1C0A3E4F6B7C8D9E01 /* ClassroomLessonPlayer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClassroomLessonPlayer.swift; sourceTree = "<group>"; };
+		9A6C3E2D1B4F5A7C8D9E0F01 /* ClassroomNarrator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClassroomNarrator.swift; sourceTree = "<group>"; };
 		DFD3079071FB36886B29BF05 /* CourseContextView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CourseContextView.swift; sourceTree = "<group>"; };
 		E139EE49834D2DA9A276C1A5 /* ExamStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExamStore.swift; sourceTree = "<group>"; };
 		E32A9DA72323CC125FAAF338 /* ExamPDFRenderer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExamPDFRenderer.swift; sourceTree = "<group>"; };
@@ -223,6 +225,7 @@
 		7E4A1C0B9F2D4E8A1B6C3D03 /* Classroom */ = {
 			isa = PBXGroup;
 			children = (
+				9A6C3E2D1B4F5A7C8D9E0F01 /* ClassroomNarrator.swift */,
 				8F5B2D1C0A3E4F6B7C8D9E01 /* ClassroomLessonPlayer.swift */,
 				7E4A1C0B9F2D4E8A1B6C3D01 /* ClassroomView.swift */,
 			);
@@ -314,6 +317,7 @@
 				B8F35CF8163154C661E820F6 /* ChatView.swift in Sources */,
 				7E4A1C0B9F2D4E8A1B6C3D02 /* ClassroomView.swift in Sources */,
 				8F5B2D1C0A3E4F6B7C8D9E02 /* ClassroomLessonPlayer.swift in Sources */,
+				9A6C3E2D1B4F5A7C8D9E0F02 /* ClassroomNarrator.swift in Sources */,
 				88A88BA2AD43B1C07B1E2C89 /* CourseContextView.swift in Sources */,
 				97AFC6CCC0F97D574169F8BF /* DTOs.swift in Sources */,
 				1DAD3241567917C81A87BD28 /* ExamBreakdownView.swift in Sources */,
