@@ -20,12 +20,14 @@ from .llm import get_provider
 from .retrieval import RetrievedContext, gather_context
 
 _TEACH_SYSTEM = (
-    "You are Nomi teaching inside a student's project classroom. Use only the "
-    "provided course context. Explain the requested idea clearly and build "
-    "intuition before details. Keep the lesson focused: a few short paragraphs "
-    "or steps, one concrete example when the sources support it, and finish with "
-    "one brief check-for-understanding question. Do not claim facts that are not "
-    "in the sources. If the material is absent, say so plainly."
+    "You are Nomi teaching inside a student's project classroom. The student "
+    "just interrupted the current slide with a question. Answer only that "
+    "question, like a professor pausing mid-lecture. Use only the provided "
+    "course context and the current lesson moment. Keep the answer short "
+    "enough to speak: a few sentences, one concrete point, no recap of the "
+    "whole lecture. Do not restart the lesson, do not generate slides, and "
+    "do not invent facts. If the sources do not support the answer, say so "
+    "plainly."
 )
 
 _PREPARE_SYSTEM = (
@@ -34,7 +36,7 @@ _PREPARE_SYSTEM = (
     "Decide if the requested topic is actually covered by those sources. "
     "If it is not, in_scope must be false, beats must be empty, and reason "
     "should be one short sentence. If it is, produce 4 to 8 coherent teaching "
-    "beats a later step can play, pause, and rewind. Build intuition before "
+    "beats a later step can play and pause. Build intuition before "
     "details. Stay grounded in the retrieved sources and do not invent facts. "
     "Each beat has spoken narration (`speaking`) and a visual slide. Keep "
     "slide copy concise: titles, a short body, bullets, an equation, or a "
@@ -126,14 +128,21 @@ def _citations(ctx: RetrievedContext, top_k: int) -> list[Citation]:
 def _history_text(history: list[ClassroomHistoryMessage]) -> str:
     lines: list[str] = []
     total = 0
-    for message in history[-10:]:
-        content = " ".join(message.content.split())[:1200]
-        if not content or total + len(content) > 6000:
+    for message in history[-6:]:
+        content = " ".join(message.content.split())[:800]
+        if not content or total + len(content) > 3600:
             continue
         label = "Student" if message.role == "user" else "Nomi"
         lines.append(f"{label}: {content}")
         total += len(content)
     return "\n".join(lines)
+
+
+def _retrieval_query(question: str, prompt_context: str | None) -> str:
+    extra = " ".join((prompt_context or "").split())[:800]
+    if extra:
+        return f"{question}\n{extra}"
+    return question
 
 
 def teach(
@@ -145,7 +154,15 @@ def teach(
 ) -> ChatResponse:
     settings = get_settings()
     provider = get_provider()
-    ctx = gather_context(db, project_id, question, provider, settings.top_k)
+    cleaned_question = " ".join((question or "").split())[:2000]
+    extra = " ".join((prompt_context or "").split())[:4000]
+    ctx = gather_context(
+        db,
+        project_id,
+        _retrieval_query(cleaned_question, extra),
+        provider,
+        settings.top_k,
+    )
 
     if not ctx.blocks:
         return ChatResponse(
@@ -157,15 +174,18 @@ def teach(
         )
 
     recent = _history_text(history or [])
-    extra = " ".join((prompt_context or "").split())[:4000]
     context = "\n\n---\n\n".join(ctx.blocks)
     user = (
-        f"What the student wants to learn: {question}\n\n"
-        f"Recent classroom conversation:\n{recent or '(new lesson)'}\n\n"
+        f"Student question: {cleaned_question}\n\n"
+        f"Recent classroom conversation:\n{recent or '(none)'}\n\n"
     )
     if extra:
-        user += f"Extra context from tutoring:\n{extra}\n\n"
-    user += f"Teach from the course context below.\n<<<CONTEXT>>>\n{context}\n<<<END>>>"
+        user += f"Current lesson moment:\n{extra}\n\n"
+    user += (
+        "Answer from the course context below. Stay with this slide; "
+        "do not restart the lecture.\n"
+        f"<<<CONTEXT>>>\n{context}\n<<<END>>>"
+    )
     answer = provider.chat(_TEACH_SYSTEM, user).strip()
     return ChatResponse(answer=answer, citations=_citations(ctx, settings.top_k))
 

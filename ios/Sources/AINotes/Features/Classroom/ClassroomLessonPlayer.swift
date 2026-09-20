@@ -16,8 +16,12 @@ final class ClassroomLessonPlayer {
     private(set) var currentBeatIndex = 0
     private(set) var narrationProgress = 0.0
     private(set) var playbackState: PlaybackState = .ready
+    private(set) var isSpeakingAnswer = false
 
     private let narrator = ClassroomNarrator()
+    private var askHold = false
+    private var lessonSpeechInvalidated = false
+    private var answerGeneration = 0
 
     var currentBeat: ClassroomLessonBeat? {
         guard let lesson, lesson.beats.indices.contains(currentBeatIndex) else { return nil }
@@ -39,15 +43,17 @@ final class ClassroomLessonPlayer {
 
     var isPlaying: Bool { playbackState == .playing }
 
-    var canMoveBackward: Bool { currentBeatIndex > 0 }
+    var canMoveBackward: Bool { currentBeatIndex > 0 && !askHold }
 
     var canMoveForward: Bool {
-        guard let lesson else { return false }
+        guard let lesson, !askHold else { return false }
         return currentBeatIndex < lesson.beats.count - 1
     }
 
     func load(_ lesson: ClassroomLesson) {
-        narrator.stop()
+        stopAllSpeech()
+        askHold = false
+        lessonSpeechInvalidated = false
         self.lesson = lesson
         currentBeatIndex = 0
         narrationProgress = 0
@@ -55,7 +61,9 @@ final class ClassroomLessonPlayer {
     }
 
     func reset() {
-        narrator.stop()
+        stopAllSpeech()
+        askHold = false
+        lessonSpeechInvalidated = false
         lesson = nil
         currentBeatIndex = 0
         narrationProgress = 0
@@ -63,6 +71,7 @@ final class ClassroomLessonPlayer {
     }
 
     func togglePlayback() {
+        guard !askHold else { return }
         switch playbackState {
         case .ready, .paused:
             play()
@@ -74,9 +83,10 @@ final class ClassroomLessonPlayer {
     }
 
     func play() {
-        guard currentBeat != nil else { return }
+        guard currentBeat != nil, !askHold else { return }
         playbackState = .playing
-        if !narrator.resume() {
+        if lessonSpeechInvalidated || !narrator.resume() {
+            lessonSpeechInvalidated = false
             narrateCurrentBeat()
         }
     }
@@ -90,60 +100,103 @@ final class ClassroomLessonPlayer {
     func moveBackward() {
         guard canMoveBackward else { return }
         narrator.stop()
+        isSpeakingAnswer = false
+        lessonSpeechInvalidated = true
         currentBeatIndex -= 1
         narrationProgress = 0
         playbackState = .paused
     }
 
-    func moveForward() {
-        guard canMoveForward else {
-            complete()
-            return
-        }
-        let wasPlaying = playbackState == .playing
-        narrator.stop()
-        currentBeatIndex += 1
-        narrationProgress = 0
-        playbackState = wasPlaying ? .playing : .paused
-        if wasPlaying { narrateCurrentBeat() }
-    }
-
     func replay() {
-        guard lesson?.beats.isEmpty == false else { return }
+        guard lesson?.beats.isEmpty == false, !askHold else { return }
         narrator.stop()
+        isSpeakingAnswer = false
+        lessonSpeechInvalidated = false
         currentBeatIndex = 0
         narrationProgress = 0
         playbackState = .playing
         narrateCurrentBeat()
     }
 
+    /// Pause lesson speech without leaving the current slide.
+    func pauseForAsk() {
+        askHold = true
+        isSpeakingAnswer = false
+        if playbackState == .playing {
+            pause()
+        }
+    }
+
+    /// Speak a Q&A answer. Stops any paused lesson utterance so audio cannot overlap.
+    func speakAnswer(_ text: String, completion: @escaping () -> Void) {
+        askHold = true
+        lessonSpeechInvalidated = true
+        if playbackState == .playing {
+            playbackState = .paused
+        }
+        answerGeneration += 1
+        let generation = answerGeneration
+        isSpeakingAnswer = true
+        narrator.speak(text) { _ in } completion: { [weak self] in
+            guard let self, self.answerGeneration == generation else { return }
+            self.isSpeakingAnswer = false
+            completion()
+        }
+    }
+
+    func stopAnswerSpeech() {
+        answerGeneration += 1
+        if isSpeakingAnswer {
+            narrator.stop()
+            isSpeakingAnswer = false
+            lessonSpeechInvalidated = true
+        }
+    }
+
+    /// Leave Ask Nomi and continue this same beat. Does not advance or restart the lesson.
+    func resumeLessonAfterAsk() {
+        askHold = false
+        stopAnswerSpeech()
+        if playbackState == .completed { return }
+        play()
+    }
+
     /// Stop audio without discarding the prepared lesson or current position.
     func stopPlayback() {
-        narrator.stop()
+        stopAllSpeech()
+        lessonSpeechInvalidated = true
         if playbackState == .playing {
             playbackState = .paused
         }
     }
 
+    private func stopAllSpeech() {
+        answerGeneration += 1
+        isSpeakingAnswer = false
+        narrator.stop()
+    }
+
     private func narrateCurrentBeat() {
-        guard let beat = currentBeat else { return }
+        guard let beat = currentBeat, !askHold else { return }
         let expectedIndex = currentBeatIndex
         narrator.speak(beat.speaking) { [weak self] progress in
             guard let self,
                   self.playbackState == .playing,
+                  !self.askHold,
                   self.currentBeatIndex == expectedIndex else { return }
             self.narrationProgress = min(1, max(self.narrationProgress, progress))
         } completion: { [weak self] in
             guard let self,
                   self.playbackState == .playing,
+                  !self.askHold,
                   self.currentBeatIndex == expectedIndex else { return }
             self.advanceAfterNarration()
         }
     }
 
     private func advanceAfterNarration() {
-        guard playbackState == .playing else { return }
-        if canMoveForward {
+        guard playbackState == .playing, !askHold else { return }
+        if currentBeatIndex < (lesson?.beats.count ?? 0) - 1 {
             currentBeatIndex += 1
             narrationProgress = 0
             narrateCurrentBeat()

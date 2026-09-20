@@ -36,6 +36,7 @@
 		CA82DD47EA7BAA6C2236D59D /* ProjectShellView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2150C64B92C8C4547D8384A1 /* ProjectShellView.swift */; };
 		CC4A090CCC1AD1E05867729B /* ExamStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = E139EE49834D2DA9A276C1A5 /* ExamStore.swift */; };
 		D03241E026F053FF09174685 /* APIClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = B6A0F7838FC7E64FA1C2BEC1 /* APIClient.swift */; };
+		D29F5AE73E7887068FC12D3C /* ClassroomAskCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 092E7B45024205DB9ED0BBE0 /* ClassroomAskCard.swift */; };
 		D403DB5517A38AB344AB5CC5 /* PastExamsSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D5654092B17F48164BE3A0C /* PastExamsSheet.swift */; };
 		D8180EB6A7BA7B4184DC52C3 /* MermaidDiagramView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC19C71E274AAA9E9A7F1B5F /* MermaidDiagramView.swift */; };
 		DE29E0382ED23ECB25AC56E9 /* OnboardingFlowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0A5CB77D203F0F87CC0E8AA /* OnboardingFlowView.swift */; };
@@ -55,6 +56,7 @@
 		04A1583D274357D84F424671 /* ClassroomLessonPlayer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClassroomLessonPlayer.swift; sourceTree = "<group>"; };
 		0540F6611770B4C342C89FAC /* AINotes.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = AINotes.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		06D5291BDD557BFCFAE88F55 /* ClassroomView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClassroomView.swift; sourceTree = "<group>"; };
+		092E7B45024205DB9ED0BBE0 /* ClassroomAskCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClassroomAskCard.swift; sourceTree = "<group>"; };
 		1B8819978A4F153A485BB095 /* ProjectDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectDetailView.swift; sourceTree = "<group>"; };
 		20B655AC6266D0A42ED869CB /* DTOs.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DTOs.swift; sourceTree = "<group>"; };
 		2150C64B92C8C4547D8384A1 /* ProjectShellView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectShellView.swift; sourceTree = "<group>"; };
@@ -196,6 +198,7 @@
 		B116193248A6D7A1C95D5276 /* Classroom */ = {
 			isa = PBXGroup;
 			children = (
+				092E7B45024205DB9ED0BBE0 /* ClassroomAskCard.swift */,
 				04A1583D274357D84F424671 /* ClassroomLessonPlayer.swift */,
 				353788D16D9E5BF576F5FE44 /* ClassroomNarrator.swift */,
 				DC2FC137F94C236F8E9AB4B4 /* ClassroomSlideView.swift */,
@@ -340,6 +343,7 @@
 				D03241E026F053FF09174685 /* APIClient.swift in Sources */,
 				F240286D09069D942DFB96D0 /* AppConfig.swift in Sources */,
 				B8F35CF8163154C661E820F6 /* ChatView.swift in Sources */,
+				D29F5AE73E7887068FC12D3C /* ClassroomAskCard.swift in Sources */,
 				E11356B9E3FB1B82EA7215A8 /* ClassroomLessonPlayer.swift in Sources */,
 				B5870D84B849FE901100B0D1 /* ClassroomNarrator.swift in Sources */,
 				7DFD02B1A89B6BECAACA7EB7 /* ClassroomSlideView.swift in Sources */,

@@ -88,7 +88,7 @@ configured:
 - `POST /projects/{id}/chat` -> grounded answer + citations
 - `GET /projects/{id}/classroom/suggestions` -> three course-grounded topic names
 - `POST /projects/{id}/classroom/prepare` -> in-scope lesson plan (beats, sources, passages)
-- `POST /projects/{id}/classroom/teach` -> a sourced lesson, with optional history
+- `POST /projects/{id}/classroom/teach` -> a short spoken answer about the current slide, with optional history and lesson `prompt_context`
 - `POST /projects/{id}/shadow` -> live tutor analysis (image + context)
 
 ### Classroom lesson protocol v1

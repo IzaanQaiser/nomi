@@ -7,6 +7,7 @@ os.environ["DATABASE_URL"] = "sqlite:///:memory:"
 
 from app.db import Base, SessionLocal, engine, init_db  # noqa: E402
 from app.models import Project, Source  # noqa: E402
+from app.schemas import ClassroomHistoryMessage  # noqa: E402
 from app.services.classroom import (  # noqa: E402
     _normalize_beats,
     _parse_suggestions,
@@ -15,6 +16,7 @@ from app.services.classroom import (  # noqa: E402
     teach,
 )
 from app.services.ingest import ingest_source  # noqa: E402
+from app.services.llm.mock import MockProvider  # noqa: E402
 
 
 class SuggestionParseTests(unittest.TestCase):
@@ -281,6 +283,59 @@ class ClassroomServiceTests(unittest.TestCase):
         self.assertTrue(response.answer)
         self.assertTrue(response.citations)
         self.assertIn("lead", response.answer.lower())
+
+    def test_teach_uses_current_slide_context_and_history(self):
+        self._ready_source(
+            "Compensators",
+            "A lead compensator increases phase margin and speeds the "
+            "transient response.",
+        )
+        captured: dict[str, str] = {}
+
+        class CapturingProvider(MockProvider):
+            def chat(self, system, user, *, json_mode=False, json_schema=None):
+                captured["system"] = system
+                captured["user"] = user
+                return super().chat(
+                    system, user, json_mode=json_mode, json_schema=json_schema
+                )
+
+        with patch(
+            "app.services.classroom.get_provider",
+            return_value=CapturingProvider(),
+        ):
+            response = teach(
+                self.db,
+                self.project.id,
+                "why does the zero matter?",
+                history=[
+                    ClassroomHistoryMessage(
+                        role="user", content="What is a lead compensator?"
+                    ),
+                    ClassroomHistoryMessage(
+                        role="assistant",
+                        content="It adds a zero and a farther pole to add phase.",
+                    ),
+                ],
+                prompt_context=(
+                    "Lesson topic: lead compensators\n"
+                    "Current beat: The relation\n"
+                    "Current slide layout: equation\n"
+                    "Current slide title: Key relation\n"
+                    "Slide equation: G(s) = K (s + z) / (s + p)\n"
+                    "Current narration: Apply it to one example from the notes."
+                ),
+            )
+        self.assertTrue(response.answer)
+        self.assertTrue(response.citations)
+        self.assertIn("interrupted", captured["system"])
+        self.assertIn("do not restart", captured["system"].lower())
+        self.assertIn("Student question: why does the zero matter?", captured["user"])
+        self.assertIn("Current slide title: Key relation", captured["user"])
+        self.assertIn("Slide equation: G(s) = K (s + z) / (s + p)", captured["user"])
+        self.assertIn("What is a lead compensator?", captured["user"])
+        self.assertNotIn("board.actions", captured["user"])
+        self.assertNotIn("reveal_at", captured["user"])
 
     def test_prepare_without_sources_is_out_of_scope(self):
         lesson = prepare_lesson(self.db, self.project.id, "control theory")

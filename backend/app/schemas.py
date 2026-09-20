@@ -79,7 +79,7 @@ class ClassroomHistoryMessage(BaseModel):
 class ClassroomRequest(BaseModel):
     question: str = Field(min_length=1, max_length=2000)
     history: list[ClassroomHistoryMessage] = []
-    # Optional handoff from live tutoring later (stuck problem, page notes, etc.).
+    # Current lesson moment and optional tutoring handoff. Not a new lesson plan.
     prompt_context: str | None = Field(default=None, max_length=4000)
 
 

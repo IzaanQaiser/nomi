@@ -1,5 +1,11 @@
 import SwiftUI
 
+struct ClassroomQAExchange: Identifiable, Equatable {
+    let id = UUID()
+    let question: String
+    let answer: String
+}
+
 @MainActor
 @Observable
 final class ClassroomSession {
@@ -19,7 +25,16 @@ final class ClassroomSession {
     var lesson: ClassroomLesson?
     let player = ClassroomLessonPlayer()
     var errorMessage: String?
+    var isAsking = false
+    var askInput = ""
+    var isListening = false
+    var isSendingAsk = false
+    var askError: String?
+    var exchanges: [ClassroomQAExchange] = []
+
     private var prepareGeneration = 0
+    private var askGeneration = 0
+    private var voice: VoiceListener?
 
     init(project: Project, seed: ClassroomSeed = ClassroomSeed()) {
         self.project = project
@@ -38,6 +53,19 @@ final class ClassroomSession {
             return heading
         }
         return "\(project.name) · \(heading)"
+    }
+
+    var visibleExchanges: [ClassroomQAExchange] {
+        Array(exchanges.suffix(2))
+    }
+
+    var askHistory: [ClassroomHistoryMessage] {
+        exchanges.suffix(3).flatMap {
+            [
+                ClassroomHistoryMessage(role: "user", content: $0.question),
+                ClassroomHistoryMessage(role: "assistant", content: $0.answer),
+            ]
+        }
     }
 
     func loadSuggestions() async {
@@ -63,6 +91,7 @@ final class ClassroomSession {
         guard !topic.isEmpty, phase != .preparing else { return }
         self.topic = topic
         lesson = nil
+        resetAskState()
         player.reset()
         errorMessage = nil
         phase = .preparing
@@ -94,6 +123,7 @@ final class ClassroomSession {
 
     func cancelPrepare() {
         prepareGeneration += 1
+        resetAskState()
         phase = .picking
         lesson = nil
         player.reset()
@@ -101,11 +131,163 @@ final class ClassroomSession {
 
     func resetToPicker() {
         prepareGeneration += 1
+        resetAskState()
         phase = .picking
         topic = ""
         lesson = nil
         player.reset()
         errorMessage = nil
+    }
+
+    func leaveClassroom() {
+        askGeneration += 1
+        cancelListening()
+        isSendingAsk = false
+        player.stopPlayback()
+    }
+
+    func beginAsk() {
+        guard phase == .teaching, !isAsking else { return }
+        isAsking = true
+        askError = nil
+        player.pauseForAsk()
+        cancelListening()
+    }
+
+    func continueLesson() {
+        cancelListening()
+        askGeneration += 1
+        isSendingAsk = false
+        askError = nil
+        isAsking = false
+        player.resumeLessonAfterAsk()
+    }
+
+    func resetAskState() {
+        askGeneration += 1
+        cancelListening()
+        isAsking = false
+        isSendingAsk = false
+        askError = nil
+        askInput = ""
+        exchanges = []
+        player.stopAnswerSpeech()
+    }
+
+    func toggleListening() async {
+        if isListening {
+            cancelListening()
+            return
+        }
+        guard isAsking, !isSendingAsk else { return }
+        player.stopAnswerSpeech()
+        let listener = voice ?? VoiceListener()
+        voice = listener
+        listener.onPartial = { [weak self] text in
+            self?.askInput = String(text.prefix(2000))
+        }
+        listener.onFinished = { [weak self] text in
+            guard let self else { return }
+            self.isListening = false
+            let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+            if trimmed.isEmpty {
+                self.askError = "I didn’t catch that. Type it, or try the mic again."
+                return
+            }
+            self.askInput = String(trimmed.prefix(2000))
+            Task { await self.sendAsk() }
+        }
+        listener.onError = { [weak self] message in
+            self?.isListening = false
+            self?.askError = message
+        }
+        let allowed = await listener.requestAccess()
+        guard allowed else {
+            askError = "Allow microphone and speech recognition to ask out loud."
+            return
+        }
+        do {
+            askError = nil
+            isListening = true
+            try listener.start()
+        } catch {
+            isListening = false
+            askError = error.localizedDescription
+        }
+    }
+
+    func sendAsk() async {
+        let question = askInput.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard isAsking, !question.isEmpty, !isSendingAsk else { return }
+        cancelListening()
+        player.stopAnswerSpeech()
+        askError = nil
+        isSendingAsk = true
+        askGeneration += 1
+        let generation = askGeneration
+        do {
+            let response = try await APIClient.shared.teach(
+                projectId: project.id,
+                question: question,
+                history: askHistory,
+                promptContext: lessonPromptContext()
+            )
+            guard generation == askGeneration, isAsking else { return }
+            isSendingAsk = false
+            askInput = ""
+            let answer = response.answer.trimmingCharacters(in: .whitespacesAndNewlines)
+            exchanges.append(ClassroomQAExchange(question: question, answer: answer))
+            if exchanges.count > 3 {
+                exchanges.removeFirst(exchanges.count - 3)
+            }
+            player.speakAnswer(answer) {}
+        } catch {
+            guard generation == askGeneration, isAsking else { return }
+            isSendingAsk = false
+            askError = error.localizedDescription
+        }
+    }
+
+    func lessonPromptContext() -> String {
+        var lines: [String] = []
+        if let lesson {
+            lines.append("Lesson topic: \(lesson.topic)")
+            if !lesson.title.isEmpty {
+                lines.append("Lesson title: \(lesson.title)")
+            }
+        }
+        if let beat = player.currentBeat {
+            let slide = beat.slide
+            lines.append("Current beat: \(beat.title)")
+            lines.append("Current slide layout: \(slide.layout.rawValue)")
+            lines.append("Current slide title: \(slide.title)")
+            if !slide.subtitle.isEmpty { lines.append("Slide subtitle: \(slide.subtitle)") }
+            if !slide.body.isEmpty { lines.append("Slide body: \(slide.body)") }
+            if !slide.equation.isEmpty { lines.append("Slide equation: \(slide.equation)") }
+            if !slide.caption.isEmpty { lines.append("Slide caption: \(slide.caption)") }
+            if !slide.callout.isEmpty { lines.append("Slide callout: \(slide.callout)") }
+            if !slide.question.isEmpty { lines.append("Slide question: \(slide.question)") }
+            if !slide.bullets.isEmpty {
+                lines.append("Slide bullets: \(slide.bullets.joined(separator: "; "))")
+            }
+            if !slide.steps.isEmpty {
+                lines.append("Slide steps: \(slide.steps.joined(separator: "; "))")
+            }
+            if !slide.mermaid.isEmpty {
+                lines.append("Slide has a diagram.")
+            }
+            lines.append("Current narration: \(beat.speaking)")
+        }
+        if let handoff = seed.promptContext?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !handoff.isEmpty {
+            lines.append("Original tutoring handoff: \(handoff)")
+        }
+        return String(lines.joined(separator: "\n").prefix(4000))
+    }
+
+    private func cancelListening() {
+        isListening = false
+        voice?.cancel()
     }
 }
 
@@ -121,7 +303,6 @@ struct ClassroomView: View {
     @State private var session: ClassroomSession
     @State private var hasAppeared = false
     @State private var showLessonSources = false
-    @State private var isAskingNomi = false
 
     init(project: Project, seed: ClassroomSeed = ClassroomSeed()) {
         self.project = project
@@ -157,24 +338,25 @@ struct ClassroomView: View {
         }
         .onChange(of: session.phase) { _, phase in
             if phase == .teaching {
-                isAskingNomi = false
+                session.resetAskState()
                 session.player.play()
             } else {
-                isAskingNomi = false
+                session.resetAskState()
             }
         }
         .onChange(of: scenePhase) { _, phase in
             if phase != .active {
-                session.player.stopPlayback()
+                session.leaveClassroom()
             }
         }
         .onChange(of: showLessonSources) { _, isPresented in
             if isPresented {
                 session.player.stopPlayback()
+                session.player.stopAnswerSpeech()
             }
         }
         .onDisappear {
-            session.player.stopPlayback()
+            session.leaveClassroom()
         }
         .sheet(isPresented: $showLessonSources) {
             NavigationStack {
@@ -206,8 +388,12 @@ struct ClassroomView: View {
                         isLoadingSuggestions: session.isLoadingSuggestions,
                         isSending: false,
                         errorMessage: session.errorMessage,
+                        canRetry: !session.topic.isEmpty,
                         onStart: { topic in
                             Task { await session.startLesson(topic) }
+                        },
+                        onRetry: {
+                            Task { await session.startLesson(session.topic) }
                         }
                     )
                 }
@@ -265,12 +451,17 @@ struct ClassroomView: View {
                             .frame(width: min(168, sideWidth - 24), height: min(168, sideWidth - 24))
                             .accessibilityLabel("Nomi")
 
-                        ClassroomNarrationCard(
-                            speaking: session.player.currentBeat?.speaking ?? "",
-                            progress: session.player.narrationProgress,
-                            isPlaying: session.player.isPlaying
-                        )
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        if session.isAsking {
+                            ClassroomAskCard(session: session)
+                                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        } else {
+                            ClassroomNarrationCard(
+                                speaking: session.player.currentBeat?.speaking ?? "",
+                                progress: session.player.narrationProgress,
+                                isPlaying: session.player.isPlaying
+                            )
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        }
                     }
                     .frame(width: sideWidth)
                 }
@@ -279,15 +470,11 @@ struct ClassroomView: View {
 
                 ClassroomTransportBar(
                     player: session.player,
-                    onAskNomi: askNomi
+                    isAsking: session.isAsking,
+                    onAskNomi: { session.beginAsk() }
                 )
                 .padding(.top, 16)
                 .padding(.bottom, 20)
-            }
-            .overlay {
-                if isAskingNomi {
-                    askNomiPlaceholder
-                }
             }
         }
     }
@@ -295,7 +482,6 @@ struct ClassroomView: View {
     private var stageHeader: some View {
         HStack(spacing: 14) {
             Button {
-                isAskingNomi = false
                 session.resetToPicker()
             } label: {
                 Image(systemName: "chevron.left")
@@ -333,47 +519,11 @@ struct ClassroomView: View {
     }
 
     private var nomiPose: NomiPose {
+        if session.player.isSpeakingAnswer { return .talk }
+        if session.isSendingAsk { return .thinking }
+        if session.isListening { return .listening }
         if session.player.isPlaying { return .talk }
         return .idle
-    }
-
-    private func askNomi() {
-        session.player.pause()
-        isAskingNomi = true
-    }
-
-    private var askNomiPlaceholder: some View {
-        ZStack {
-            NomiTheme.ink.opacity(0.12)
-                .ignoresSafeArea()
-                .onTapGesture { isAskingNomi = false }
-
-            VStack(spacing: 12) {
-                Text("Ask Nomi")
-                    .font(.title3.weight(.bold))
-                    .foregroundStyle(NomiTheme.ink)
-                Text("You can ask from this lesson next. For now the lecture is paused.")
-                    .font(.body)
-                    .multilineTextAlignment(.center)
-                    .foregroundStyle(NomiTheme.secondaryInk)
-                Button("Back to the lesson") {
-                    isAskingNomi = false
-                }
-                .font(.subheadline.weight(.semibold))
-                .foregroundStyle(.white)
-                .padding(.horizontal, 18)
-                .padding(.vertical, 10)
-                .background(NomiTheme.blue, in: Capsule())
-            }
-            .padding(28)
-            .frame(maxWidth: 420)
-            .background(NomiTheme.surface, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
-            .overlay {
-                RoundedRectangle(cornerRadius: 24, style: .continuous)
-                    .stroke(NomiTheme.hairline, lineWidth: 1)
-            }
-            .shadow(color: NomiTheme.ink.opacity(0.08), radius: 18, y: 8)
-        }
     }
 
     private func classroomHeader(title: String, back: @escaping () -> Void) -> some View {
@@ -439,7 +589,9 @@ private struct ClassroomPickerForm: View {
     let isLoadingSuggestions: Bool
     let isSending: Bool
     let errorMessage: String?
+    let canRetry: Bool
     let onStart: (String) -> Void
+    let onRetry: () -> Void
 
     @FocusState private var isFocused: Bool
     @State private var input = ""
@@ -528,10 +680,17 @@ private struct ClassroomPickerForm: View {
             }
 
             if let errorMessage {
-                Label(errorMessage, systemImage: "exclamationmark.circle.fill")
-                    .font(.footnote)
-                    .foregroundStyle(Color.orange)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                VStack(alignment: .leading, spacing: 8) {
+                    Label(errorMessage, systemImage: "exclamationmark.circle.fill")
+                        .font(.footnote)
+                        .foregroundStyle(Color.orange)
+                    if canRetry {
+                        Button("Try again", action: onRetry)
+                            .font(.footnote.weight(.semibold))
+                            .foregroundStyle(NomiTheme.blue)
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
     }
@@ -611,13 +770,14 @@ private struct ClassroomNarrationCard: View {
 
 private struct ClassroomTransportBar: View {
     let player: ClassroomLessonPlayer
+    var isAsking = false
     let onAskNomi: () -> Void
 
     var body: some View {
         HStack(spacing: 44) {
-            control("Previous", enabled: player.canMoveBackward, action: player.moveBackward)
-            control(playbackTitle, prominent: true, action: player.togglePlayback)
-            control("Ask Nomi", action: onAskNomi)
+            control("Previous", enabled: player.canMoveBackward && !isAsking, action: player.moveBackward)
+            control(playbackTitle, enabled: !isAsking, prominent: true, action: player.togglePlayback)
+            control("Ask Nomi", enabled: !isAsking, action: onAskNomi)
         }
         .padding(.vertical, 8)
         .frame(maxWidth: .infinity)
