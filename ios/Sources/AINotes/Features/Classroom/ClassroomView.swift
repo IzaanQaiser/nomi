@@ -273,9 +273,6 @@ final class ClassroomSession {
             if !slide.steps.isEmpty {
                 lines.append("Slide steps: \(slide.steps.joined(separator: "; "))")
             }
-            if !slide.mermaid.isEmpty {
-                lines.append("Slide has a diagram.")
-            }
             lines.append("Current narration: \(beat.speaking)")
         }
         if let handoff = seed.promptContext?.trimmingCharacters(in: .whitespacesAndNewlines),
@@ -755,9 +752,19 @@ private struct ClassroomNarrationCard: View {
 
     private var caption: AttributedString {
         var attributed = AttributedString(speaking)
-        attributed.foregroundColor = NomiTheme.ink
-        let highlight = isPlaying || (progress > 0.02 && progress < 0.99)
-        guard highlight, !speaking.isEmpty else { return attributed }
+        guard !speaking.isEmpty else { return attributed }
+
+        let spoken = isPlaying || progress > 0.02
+        if !spoken {
+            attributed.foregroundColor = NomiTheme.secondaryInk
+            return attributed
+        }
+        if progress >= 0.99 {
+            attributed.foregroundColor = NomiTheme.blue
+            return attributed
+        }
+
+        attributed.foregroundColor = NomiTheme.blue
         let cutoff = min(speaking.count, max(0, Int((progress * Double(speaking.count)).rounded(.down))))
         guard cutoff > 0, cutoff < speaking.count else { return attributed }
         let index = speaking.index(speaking.startIndex, offsetBy: cutoff)

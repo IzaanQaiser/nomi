@@ -49,9 +49,8 @@ struct ClassroomSlideView: View {
         case .title: titleLayout
         case .concept: conceptLayout
         case .equation: equationLayout
-        case .bullets: bulletsLayout
+        case .bullets, .diagram: bulletsLayout
         case .steps: stepsLayout
-        case .diagram: diagramLayout
         case .checkpoint: checkpointLayout
         }
     }
@@ -164,42 +163,6 @@ struct ClassroomSlideView: View {
         }
     }
 
-    private var diagramLayout: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            if !slide.title.isEmpty {
-                Text(slide.title)
-                    .font(.title2.weight(.bold))
-                    .foregroundStyle(NomiTheme.ink)
-            }
-            ViewThatFits(in: .horizontal) {
-                HStack(alignment: .top, spacing: 24) {
-                    teachingBullets
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                    mermaidBlock
-                        .frame(maxWidth: .infinity, minHeight: 260, maxHeight: .infinity)
-                }
-                VStack(alignment: .leading, spacing: 14) {
-                    teachingBullets
-                    mermaidBlock
-                        .frame(maxWidth: .infinity, minHeight: 220, maxHeight: .infinity)
-                }
-            }
-            if !slide.caption.isEmpty {
-                Text(slide.caption)
-                    .font(.subheadline)
-                    .foregroundStyle(NomiTheme.secondaryInk)
-            }
-        }
-    }
-
-    private var mermaidBlock: some View {
-        MermaidDiagramView(
-            source: slide.mermaid,
-            caption: slide.caption,
-            bodyText: slide.body
-        )
-    }
-
     private var checkpointLayout: some View {
         VStack(spacing: 18) {
             Text(slide.title.isEmpty ? "Check your understanding" : slide.title)
@@ -248,7 +211,7 @@ struct ClassroomSlideView: View {
     }
 
     private var bulletList: some View {
-        VStack(alignment: .leading, spacing: 18) {
+        VStack(alignment: .leading, spacing: 14) {
             ForEach(Array(slide.bullets.enumerated()), id: \.offset) { _, bullet in
                 HStack(alignment: .top, spacing: 14) {
                     Circle()
@@ -324,17 +287,23 @@ struct ClassroomSlideView: View {
     }
 }
 
+
+private let previewNotes = [
+    "A block is a system with an input and an output you can name.",
+    "Arrows are signals, not wires or decoration on the page.",
+    "By the end you should be able to read a closed loop out loud.",
+    "The summing junction is where two signals meet and get compared.",
+    "If you cannot name the output of a block, the picture is incomplete.",
+    "Keep the wording from the notes instead of inventing a slogan.",
+]
+
 #Preview("Title") {
     ClassroomSlideView(
         slide: ClassroomSlide(
             layout: .title,
             title: "Block Diagrams",
             subtitle: "How signals move through a system",
-            bullets: [
-                "A block is a system with an input and an output.",
-                "Arrows are signals, not wires or decoration.",
-                "By the end you should be able to read a closed loop out loud.",
-            ]
+            bullets: previewNotes
         ),
         progressLabel: "Slide 1 of 6"
     )
@@ -348,11 +317,7 @@ struct ClassroomSlideView: View {
             layout: .concept,
             title: "What a block diagram is",
             body: "Each block is a system. Arrows are signals. The picture shows cause flowing into effect.",
-            bullets: [
-                "Read left to right unless a feedback path says otherwise.",
-                "The summing junction is where two signals meet.",
-                "If you cannot name the output of a block, the picture is incomplete.",
-            ],
+            bullets: previewNotes,
             callout: "Read left to right unless a feedback path says otherwise."
         ),
         progressLabel: "Slide 2 of 6"
@@ -366,11 +331,7 @@ struct ClassroomSlideView: View {
         slide: ClassroomSlide(
             layout: .equation,
             title: "The transfer function",
-            bullets: [
-                "G(s) is output over input in the s-domain.",
-                "It compresses the whole plant into one relation.",
-                "Use it when you want frequency-domain behavior, not a time sketch.",
-            ],
+            bullets: previewNotes,
             equation: "G(s) = Y(s) / U(s)",
             caption: "Output over input, in the s-domain."
         ),
@@ -385,11 +346,7 @@ struct ClassroomSlideView: View {
         slide: ClassroomSlide(
             layout: .bullets,
             title: "What to look for",
-            bullets: [
-                "Every arrow is a signal, not a wire decoration.",
-                "Summing junctions compare two signals.",
-                "A loop means feedback is closing the system.",
-            ]
+            bullets: previewNotes
         ),
         progressLabel: "Slide 4 of 6"
     )
@@ -401,12 +358,8 @@ struct ClassroomSlideView: View {
     ClassroomSlideView(
         slide: ClassroomSlide(
             layout: .steps,
-            title: "How to read the diagram",
-            bullets: [
-                "Always start at the reference, not at a random block.",
-                "Name what the plant does before looking at feedback.",
-                "The loop only matters once you can say what comes back.",
-            ],
+            title: "How to read the loop",
+            bullets: previewNotes,
             steps: [
                 "Start at the reference.",
                 "Follow the plant.",
@@ -419,54 +372,12 @@ struct ClassroomSlideView: View {
     .background(NomiTheme.paper)
 }
 
-#Preview("Diagram") {
-    ClassroomSlideView(
-        slide: ClassroomSlide(
-            layout: .diagram,
-            title: "The loop",
-            bullets: [
-                "Read left to right: input, plant, output.",
-                "The plant is the system being asked to do the work.",
-                "A later arrow can send the output back for comparison.",
-            ],
-            caption: "The plant sits between input and output.",
-            mermaid: "flowchart LR\n  Input --> Plant --> Output"
-        ),
-        progressLabel: "Slide 5 of 6"
-    )
-    .padding(24)
-    .background(NomiTheme.paper)
-}
-
-#Preview("Invalid diagram") {
-    ClassroomSlideView(
-        slide: ClassroomSlide(
-            layout: .diagram,
-            title: "The loop",
-            bullets: [
-                "If the picture fails to render, the notes still stand.",
-                "The plant sits between input and output.",
-                "Cause still flows left to right even without the diagram.",
-            ],
-            caption: "The plant sits between input and output.",
-            mermaid: "this is not mermaid [["
-        ),
-        progressLabel: "Slide 5 of 6"
-    )
-    .padding(24)
-    .background(NomiTheme.paper)
-}
-
 #Preview("Checkpoint") {
     ClassroomSlideView(
         slide: ClassroomSlide(
             layout: .checkpoint,
             title: "Check your understanding",
-            bullets: [
-                "Name the signal that dropped.",
-                "Say whether the feedback path adds or subtracts.",
-                "If you cannot, rewind one slide and try again.",
-            ],
+            bullets: previewNotes,
             question: "If the output suddenly drops, what does the feedback path do?"
         ),
         progressLabel: "Slide 6 of 6"

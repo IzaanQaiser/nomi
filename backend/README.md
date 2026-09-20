@@ -96,15 +96,13 @@ configured:
 `classroom/prepare` returns `lesson_protocol_version: 1`. Every in-scope lesson
 has 4 to 8 beats. Each beat contains spoken narration (`speaking`) and a
 deterministic `slide` with a layout of `title`, `concept`, `equation`,
-`bullets`, `steps`, `diagram`, or `checkpoint`. Every slide, including title
-pages, must carry 3 to 5 complete-sentence teaching bullets in `slide.bullets`.
-Diagram slides require Mermaid syntax (`flowchart`, `stateDiagram`, or
-`sequenceDiagram`); node IDs cannot contain spaces and labels must be quoted.
-The server repairs common Mermaid ID mistakes, expands colon-label bullets
-into sentences, sanitizes bounded fields, and drops malformed or
-coordinate-based board output before returning the lesson. Equation slides
-require an equation and checkpoint slides require a question. Out-of-scope
-topics return no beats.
+`bullets`, `steps`, or `checkpoint`. Every slide, including title
+pages, must carry 5 or 6 complete-sentence teaching bullets in
+`slide.bullets`. There are no diagram slides. Equation slides require an
+equation and checkpoint slides require a question. The server sanitizes
+bounded fields, expands colon-label bullets into sentences, and drops
+malformed or coordinate-based board output before returning the lesson.
+Out-of-scope topics return no beats.
 
 ## Architecture notes
 

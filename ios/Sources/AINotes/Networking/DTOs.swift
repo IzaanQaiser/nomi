@@ -139,7 +139,8 @@ struct ClassroomSlide: Codable, Hashable {
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         let rawLayout = try container.decodeIfPresent(String.self, forKey: .layout) ?? "concept"
-        layout = ClassroomSlideLayout(rawValue: rawLayout) ?? .concept
+        let parsed = ClassroomSlideLayout(rawValue: rawLayout) ?? .concept
+        layout = parsed == .diagram ? .bullets : parsed
         title = try container.decodeIfPresent(String.self, forKey: .title) ?? ""
         subtitle = try container.decodeIfPresent(String.self, forKey: .subtitle) ?? ""
         body = try container.decodeIfPresent(String.self, forKey: .body) ?? ""

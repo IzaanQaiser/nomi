@@ -98,7 +98,6 @@ ClassroomSlideLayout = Literal[
     "equation",
     "bullets",
     "steps",
-    "diagram",
     "checkpoint",
 ]
 

@@ -39,32 +39,27 @@ _PREPARE_SYSTEM = (
     "beats a later step can play and pause. Build intuition before "
     "details. Stay grounded in the retrieved sources and do not invent facts. "
     "Each beat has spoken narration (`speaking`) and a visual slide. "
-    "EVERY slide MUST include 3 to 5 teaching bullets in `slide.bullets`. "
+    "EVERY slide MUST include 5 or 6 teaching bullets in `slide.bullets`. "
     "Each bullet is one complete sentence of at least 12 words, with a verb, "
     "ending in a period, that a student could copy as notes. Never use labels, "
     "noun stubs, or colon fragments such as 'Input: Desired output'. Write "
     "the idea out: 'The input is the desired output the loop is trying to "
-    "reach.' This includes title, concept, equation, diagram, steps, and "
-    "checkpoint slides. Title-slide bullets preview what the lesson will cover. "
+    "reach.' This includes title, concept, equation, steps, and checkpoint "
+    "slides. Title-slide bullets preview what the lesson will cover. "
     "Equation-slide bullets explain what the symbols mean and when to use it. "
-    "Diagram-slide bullets say what to read from the picture. Checkpoint "
-    "bullets are hints for thinking, not the answer. Never leave bullets empty, "
-    "never write vague bullets like 'key idea' or 'see diagram', and do not "
+    "Checkpoint bullets are hints for thinking, not the answer. Never leave "
+    "bullets empty, never write vague bullets like 'key idea', and do not "
     "paste the narration verbatim into the bullets. Keep titles short. Choose "
-    "layouts intentionally: title, concept, equation, bullets, steps, diagram, "
-    "or checkpoint. Use a diagram only when a relationship genuinely needs a "
-    "picture. Mermaid must be simple and robust: prefer flowchart LR or TD. "
-    "Node IDs must be CamelCase with no spaces. Put labels in quotes, e.g. "
-    "A[\"Desired output\"] --> B[\"Measured output\"]. No subgraphs, classDef, "
-    "click, style, HTML, SVG, or coordinates. At most 8 nodes. Produce "
-    "Mermaid syntax only. Include a useful checkpoint beat when appropriate. "
+    "layouts intentionally: title, concept, equation, bullets, steps, or "
+    "checkpoint. Do not use diagram slides, Mermaid, SVG, HTML, coordinates, "
+    "or board commands. Include a useful checkpoint beat when appropriate. "
     "Respond with STRICT JSON only, no prose and no code fences, matching:\n"
     '{"in_scope": bool, "topic": str, "title": str, "reason": str|null, '
     '"summary": str, "beats": [{"title": str, "speaking": str, '
     '"slide": {"layout": "title"|"concept"|"equation"|"bullets"|"steps"'
-    '|"diagram"|"checkpoint", "title": str, "subtitle": str, "body": str, '
+    '|"checkpoint", "title": str, "subtitle": str, "body": str, '
     '"bullets": [str], "equation": str, "caption": str, "callout": str, '
-    '"steps": [str], "mermaid": str, "question": str}}]}'
+    '"steps": [str], "question": str}}]}'
 )
 
 _SUGGEST_SYSTEM = (
@@ -79,12 +74,12 @@ _SLIDE_LAYOUTS = {
     "equation",
     "bullets",
     "steps",
-    "diagram",
     "checkpoint",
+    "diagram",
 }
 _MIN_BEATS = 4
 _MAX_BEATS = 8
-_MIN_BULLETS = 3
+_MIN_BULLETS = 5
 _MAX_BULLETS = 6
 _MIN_BULLET_WORDS = 6
 _MAX_STEPS = 8
@@ -98,30 +93,12 @@ _MAX_CALLOUT_CHARS = 180
 _MAX_EQUATION_CHARS = 200
 _MAX_QUESTION_CHARS = 240
 _MAX_SPEAKING_CHARS = 800
-_MAX_MERMAID_CHARS = 2500
 _MAX_PASSAGE_CHARS = 1600
 _MAX_PASSAGES_CHARS = 16_000
 
 _JSON_FENCE_RE = re.compile(r"^```(?:json)?\s*|\s*```$", re.IGNORECASE)
-_MERMAID_FENCE_RE = re.compile(
-    r"^```(?:mermaid)?\s*|\s*```$", re.IGNORECASE | re.MULTILINE
-)
-_MERMAID_START_RE = re.compile(
-    r"^(flowchart|graph|statediagram(?:-v2)?|sequencediagram)\b",
-    re.IGNORECASE,
-)
-_FORBIDDEN_VISUAL_RE = re.compile(
-    r"<(svg|html|body|script|iframe)\b", re.IGNORECASE
-)
 _LABEL_BULLET_RE = re.compile(
     r"^([A-Za-z][A-Za-z0-9+\-/\s()]{0,28}):\s+(\S.*)$"
-)
-_MERMAID_ARROW_RE = re.compile(
-    r"(\s*(?:-->|---|==>|-\.->|<-->|o--|x--|--o|--x)\s*(?:\|[^|]*\|\s*)?)"
-)
-_MERMAID_DROP_LINE_RE = re.compile(
-    r"^\s*(classDef|click|style|linkStyle|class|accTitle|accDescr)\b",
-    re.IGNORECASE,
 )
 _GENERIC_HEADINGS = {
     "contents",
@@ -314,100 +291,6 @@ def _string_list(value: object, *, max_items: int, max_len: int) -> list[str]:
     return items
 
 
-def _normalize_mermaid(value: object) -> str:
-    text = str(value or "").strip()
-    if not text:
-        return ""
-    text = _MERMAID_FENCE_RE.sub("", text).strip()
-    if not text or len(text) > _MAX_MERMAID_CHARS:
-        return ""
-    if _FORBIDDEN_VISUAL_RE.search(text):
-        return ""
-    lowered = text.lower()
-    if "reveal_at" in lowered or "draw_arrow" in lowered or "write_text" in lowered:
-        return ""
-    first_line = next((line.strip() for line in text.splitlines() if line.strip()), "")
-    if not _MERMAID_START_RE.match(first_line):
-        return ""
-    return _repair_mermaid(text)
-
-
-def _repair_mermaid(text: str) -> str:
-    lines = text.splitlines()
-    if not lines:
-        return text
-    header = next((line for line in lines if line.strip()), "")
-    kind = header.strip().split()[0].lower() if header else ""
-    repaired: list[str] = []
-    seen_header = False
-    for line in lines:
-        if not seen_header:
-            repaired.append(line)
-            if line.strip():
-                seen_header = True
-            continue
-        if kind in {"flowchart", "graph"}:
-            if _MERMAID_DROP_LINE_RE.match(line):
-                continue
-            repaired.append(_repair_flowchart_line(line))
-        else:
-            repaired.append(line)
-    return "\n".join(repaired)
-
-
-def _repair_flowchart_line(line: str) -> str:
-    stripped = line.strip()
-    if not stripped or stripped.startswith("%%"):
-        return line
-    indent = line[: len(line) - len(line.lstrip())]
-    parts = _MERMAID_ARROW_RE.split(stripped)
-    repaired: list[str] = []
-    for index, part in enumerate(parts):
-        if index % 2 == 1:
-            repaired.append(part)
-        elif part.strip():
-            repaired.append(_repair_flowchart_node(part.strip()))
-        else:
-            repaired.append(part)
-    return indent + "".join(repaired)
-
-
-def _repair_flowchart_node(token: str) -> str:
-    token = token.strip()
-    if not token:
-        return token
-    token = _quote_shape_labels(token)
-    if re.search(r"\s", token) and not re.search(r"[\[\(\{]", token):
-        return f"{_safe_node_id(token)}[{_quoted_label(token)}]"
-    return token
-
-
-def _quote_shape_labels(token: str) -> str:
-    def replacer(match: re.Match[str]) -> str:
-        inner = match.group(1).strip()
-        if inner.startswith(("\"", "'")):
-            return match.group(0)
-        if re.search(r"[\s:()/,=]", inner):
-            return f"[{_quoted_label(inner)}]"
-        return match.group(0)
-
-    return re.sub(r"\[([^\[\]]+)\]", replacer, token)
-
-
-def _safe_node_id(label: str) -> str:
-    ident = re.sub(r"[^A-Za-z0-9]+", "_", label).strip("_")
-    ident = re.sub(r"_+", "_", ident)
-    if not ident:
-        ident = "N"
-    if ident[0].isdigit():
-        ident = f"N_{ident}"
-    return ident[:48]
-
-
-def _quoted_label(text: str) -> str:
-    return '"' + text.replace('"', "'") + '"'
-
-
 def _as_sentence(value: str) -> str:
     text = value.strip().rstrip(" -;:,")
     if text and text[-1] not in ".!?":
@@ -503,6 +386,8 @@ def _normalize_slide(
     layout = str(raw.get("layout") or "").strip().lower()
     if layout not in _SLIDE_LAYOUTS:
         return None
+    if layout == "diagram":
+        layout = "bullets"
 
     title = _short_text(raw.get("title") or beat_title, _MAX_TITLE_CHARS)
     subtitle = _short_text(raw.get("subtitle"), _MAX_SUBTITLE_CHARS)
@@ -517,7 +402,6 @@ def _normalize_slide(
     steps = _string_list(
         raw.get("steps"), max_items=_MAX_STEPS, max_len=_MAX_STEP_CHARS
     )
-    mermaid = _normalize_mermaid(raw.get("mermaid")) if layout == "diagram" else ""
     bullets = _ensure_teaching_bullets(
         bullets,
         body=body,
@@ -529,8 +413,6 @@ def _normalize_slide(
         speaking=speaking,
     )
 
-    if layout == "diagram" and not mermaid:
-        return None
     if layout == "equation" and not equation:
         return None
     if layout == "checkpoint" and not question:
@@ -552,7 +434,7 @@ def _normalize_slide(
         caption=caption,
         callout=callout,
         steps=steps if layout in {"steps", "concept"} else [],
-        mermaid=mermaid if layout == "diagram" else "",
+        mermaid="",
         question=question if layout in {"checkpoint", "concept"} else "",
     )
 

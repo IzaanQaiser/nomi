@@ -17,8 +17,6 @@ targets:
     deploymentTarget: "17.0"
     sources:
       - path: Sources/AINotes
-      - path: Resources
-        buildPhase: resources
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.izaanqaiser.nomi
