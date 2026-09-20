@@ -28,6 +28,7 @@ from ..schemas import (
     ClassroomWriteTextAction,
 )
 from .llm import get_provider
+from .llm.base import LLMProvider
 from .retrieval import RetrievedContext, gather_context
 
 _TEACH_SYSTEM = (
@@ -76,6 +77,25 @@ _SUGGEST_SYSTEM = (
     "Identify three useful, distinct concepts a student could learn from the "
     "provided course material. Return only a JSON array of exactly three short "
     "topic names, each two to five words. Do not include numbering or commentary."
+)
+
+_BOARD_REPAIR_SYSTEM = (
+    "You are repairing the executable whiteboard commands for an existing "
+    "grounded lesson. Return a JSON object with one `beats` item for every "
+    "requested beat index. Each item is {index: integer, actions: [object]}. "
+    "Do not rewrite the lesson and do not return prose. Create the actual "
+    "visuals described by the beat rather than writing an instruction to draw "
+    "them. Use normalized coordinates from 0 to 1 with top-left origin. Every "
+    "action needs reveal_at from 0 to 1, nondecreasing within that beat. Use "
+    "only: write_text {type,reveal_at,text,position:{x,y},style}; draw_line "
+    "{type,reveal_at,start:{x,y},end:{x,y},style}; draw_arrow "
+    "{type,reveal_at,start:{x,y},end:{x,y}}; draw_rectangle "
+    "{type,reveal_at,frame:{x,y,width,height},style}; draw_axes "
+    "{type,reveal_at,frame:{x,y,width,height},x_label,y_label}; plot_polyline "
+    "{type,reveal_at,points:[{x,y}],style}; highlight "
+    "{type,reveal_at,frame:{x,y,width,height}}; clear {type,reveal_at}. "
+    "Use heading/body/equation/label/emphasis text styles, solid/dashed line "
+    "styles, and outline/filled rectangle styles. Never include action IDs."
 )
 
 _BOARD_KINDS = {"diagram", "equation", "list", "none"}
@@ -452,6 +472,65 @@ def _normalize_beats(raw_beats: object) -> list[ClassroomLessonBeat]:
     return beats
 
 
+def _repair_missing_board_actions(
+    provider: LLMProvider,
+    beats: list[ClassroomLessonBeat],
+    topic: str,
+    context: str,
+) -> tuple[list[ClassroomLessonBeat], bool]:
+    """Fill missing executable board commands without rewriting lesson content."""
+    total_actions = sum(len(beat.board.actions) for beat in beats)
+    target_indices = {
+        beat.index
+        for beat in beats
+        if not beat.board.actions
+        and (total_actions == 0 or beat.board.kind != "none" or beat.board.instruction)
+    }
+    if not target_indices:
+        return beats, True
+
+    requested = [
+        {
+            "index": beat.index,
+            "title": beat.title,
+            "speaking": beat.speaking,
+            "kind": beat.board.kind,
+            "instruction": beat.board.instruction,
+        }
+        for beat in beats
+        if beat.index in target_indices
+    ]
+    user = (
+        f"Topic: {topic}\n\n"
+        f"Beats requiring executable board actions:\n{json.dumps(requested)}\n\n"
+        f"Course context:\n<<<CONTEXT>>>\n{context[:12_000]}\n<<<END>>>"
+    )
+    try:
+        data = _extract_json(provider.chat(_BOARD_REPAIR_SYSTEM, user, json_mode=True))
+    except (ValueError, json.JSONDecodeError):
+        return beats, False
+
+    raw_repairs = data.get("beats")
+    if not isinstance(raw_repairs, list):
+        return beats, False
+    repairs = {
+        item.get("index"): item.get("actions")
+        for item in raw_repairs
+        if isinstance(item, dict)
+        and not isinstance(item.get("index"), bool)
+        and isinstance(item.get("index"), int)
+    }
+    for beat in beats:
+        if beat.index not in target_indices:
+            continue
+        actions = _normalize_board_actions(repairs.get(beat.index), beat.index)
+        if actions:
+            beat.board.actions = actions
+
+    repaired = all(beat.board.actions for beat in beats if beat.index in target_indices)
+    return beats, repaired
+
+
 def prepare_lesson(
     db: Session,
     project_id: str,
@@ -479,7 +558,7 @@ def prepare_lesson(
     user += f"<<<CONTEXT>>>\n{context}\n<<<END>>>"
 
     try:
-        data = _extract_json(provider.chat(_PREPARE_SYSTEM, user))
+        data = _extract_json(provider.chat(_PREPARE_SYSTEM, user, json_mode=True))
     except (ValueError, json.JSONDecodeError):
         return _out_of_scope(
             cleaned,
@@ -498,6 +577,19 @@ def prepare_lesson(
             reason_text
             or "That isn’t covered in this project’s sources. "
             "Pick a topic from the course.",
+            ctx,
+        )
+
+    beats, board_ready = _repair_missing_board_actions(
+        provider,
+        beats,
+        cleaned,
+        context,
+    )
+    if not board_ready or not any(beat.board.actions for beat in beats):
+        return _out_of_scope(
+            cleaned,
+            "I couldn't build a reliable whiteboard for that lesson. Please try again.",
             ctx,
         )
 

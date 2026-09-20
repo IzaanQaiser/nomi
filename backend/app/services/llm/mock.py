@@ -42,7 +42,7 @@ class MockProvider(LLMProvider):
             vectors.append([v / norm for v in vec])
         return vectors
 
-    def chat(self, system: str, user: str) -> str:
+    def chat(self, system: str, user: str, *, json_mode: bool = False) -> str:
         # Heuristic: the RAG service embeds retrieved context between markers.
         context = ""
         if "<<<CONTEXT>>>" in user and "<<<END>>>" in user:
