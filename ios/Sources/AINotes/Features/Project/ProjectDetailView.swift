@@ -88,7 +88,7 @@ private final class ProjectDetailModel {
         }
     }
 
-    func addNotebook(title: String, sourceIDs: [String]) async throws {
+    func addNotebook(title: String, sourceIDs: [String]) async throws -> ProjectNotebook {
         let selectedSources = sourceIDs.compactMap { id in
             sources.first { $0.id == id && $0.kind == "pdf" && $0.status == "ready" }
         }
@@ -119,6 +119,7 @@ private final class ProjectDetailModel {
 
         notebooks.append(notebook)
         ProjectNotebookStore.save(notebooks, projectID: project.id)
+        return notebook
     }
 
     func renameNotebook(_ notebook: ProjectNotebook, to title: String) {
@@ -178,6 +179,8 @@ struct ProjectDetailView: View {
     @State private var notebookPendingRename: ProjectNotebook?
     @State private var notebookPendingDeletion: ProjectNotebook?
     @State private var notebookName = ""
+    @State private var notebookToOpen: ProjectNotebook?
+    @State private var pendingCreatedNotebook: ProjectNotebook?
 
     init(
         project: Project,
@@ -207,6 +210,9 @@ struct ProjectDetailView: View {
         .background(NomiTheme.paper.ignoresSafeArea())
         .preferredColorScheme(.light)
         .toolbar(.hidden, for: .navigationBar)
+        .navigationDestination(item: $notebookToOpen) { notebook in
+            ProjectShellView(project: model.project, notebook: notebook)
+        }
         .task {
             await model.load()
             onProjectUpdated(model.project)
@@ -263,12 +269,22 @@ struct ProjectDetailView: View {
         } message: {
             Text("Its pages, ink, and pasted images will be permanently removed.")
         }
-        .sheet(isPresented: $showNewNotebook) {
+        .sheet(isPresented: $showNewNotebook, onDismiss: {
+            guard let notebook = pendingCreatedNotebook else { return }
+            pendingCreatedNotebook = nil
+            Task { @MainActor in
+                await Task.yield()
+                notebookToOpen = notebook
+            }
+        }) {
             NewNotebookSheet(
                 projectName: model.project.name,
                 sources: readyPDFSources,
                 onCreate: { title, sourceIDs in
-                    try await model.addNotebook(title: title, sourceIDs: sourceIDs)
+                    pendingCreatedNotebook = try await model.addNotebook(
+                        title: title,
+                        sourceIDs: sourceIDs
+                    )
                 }
             )
         }
@@ -568,6 +584,7 @@ struct ProjectDetailView: View {
                     }
 
                     Button {
+                        pendingCreatedNotebook = nil
                         showNewNotebook = true
                     } label: {
                         NewNotebookCard()
