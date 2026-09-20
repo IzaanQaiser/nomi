@@ -127,19 +127,6 @@ private final class ProjectDetailModel {
         ProjectNotebookStore.save(notebooks, projectID: project.id)
     }
 
-    func canMoveNotebook(_ notebook: ProjectNotebook, offset: Int) -> Bool {
-        guard let index = notebooks.firstIndex(where: { $0.id == notebook.id }) else { return false }
-        return notebooks.indices.contains(index + offset)
-    }
-
-    func moveNotebook(_ notebook: ProjectNotebook, offset: Int) {
-        guard let index = notebooks.firstIndex(where: { $0.id == notebook.id }) else { return }
-        let destination = index + offset
-        guard notebooks.indices.contains(destination) else { return }
-        notebooks.swapAt(index, destination)
-        ProjectNotebookStore.save(notebooks, projectID: project.id)
-    }
-
     func deleteNotebook(_ notebook: ProjectNotebook) {
         guard notebooks.count > 1,
               notebooks.contains(where: { $0.id == notebook.id })
@@ -569,24 +556,6 @@ struct ProjectDetailView: View {
                                 Label("Notebook Info", systemImage: "info.circle")
                             }
 
-                            Menu {
-                                Button {
-                                    model.moveNotebook(notebook, offset: -1)
-                                } label: {
-                                    Label("Move Earlier", systemImage: "arrow.up")
-                                }
-                                .disabled(!model.canMoveNotebook(notebook, offset: -1))
-
-                                Button {
-                                    model.moveNotebook(notebook, offset: 1)
-                                } label: {
-                                    Label("Move Later", systemImage: "arrow.down")
-                                }
-                                .disabled(!model.canMoveNotebook(notebook, offset: 1))
-                            } label: {
-                                Label("Move", systemImage: "arrow.up.arrow.down")
-                            }
-
                             Divider()
 
                             Button(role: .destructive) {
@@ -715,10 +684,9 @@ private struct NewNotebookCard: View {
                 .background(NomiTheme.blue.opacity(0.09), in: Circle())
             Text("New Notebook")
                 .font(.headline)
-                .font(.subheadline)
-                .foregroundStyle(NomiTheme.secondaryInk)
+                .foregroundStyle(NomiTheme.ink)
         }
-        .frame(maxWidth: .infinity, minHeight: 150)
+        .frame(maxWidth: .infinity, minHeight: 112)
         .background(NomiTheme.blue.opacity(0.025), in: RoundedRectangle(cornerRadius: 20))
         .overlay {
             RoundedRectangle(cornerRadius: 20)
