@@ -104,7 +104,7 @@ ClassroomSlideLayout = Literal[
 
 
 class ClassroomSlide(BaseModel):
-    """Deterministic visual lesson card. Unused fields stay empty."""
+    """Deterministic visual lesson card. Every layout keeps teaching bullets."""
 
     layout: ClassroomSlideLayout
     title: str = ""

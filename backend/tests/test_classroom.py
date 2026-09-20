@@ -43,6 +43,11 @@ class SlideProtocolTests(unittest.TestCase):
                         "layout": "concept",
                         "title": "Feedback",
                         "body": "Compare output with the reference.",
+                        "bullets": [
+                            "Feedback compares output with the reference.",
+                            "The error is what the controller actually sees.",
+                            "Without that comparison, the loop is open.",
+                        ],
                     },
                 },
                 {
@@ -52,6 +57,11 @@ class SlideProtocolTests(unittest.TestCase):
                         "layout": "diagram",
                         "title": "Loop",
                         "mermaid": "flowchart LR\n  Ref --> Plant --> Output",
+                        "bullets": [
+                            "Start at the reference on the left.",
+                            "The plant turns that command into an output.",
+                            "Read the arrows as signals, not decorations.",
+                        ],
                     },
                 },
                 {
@@ -61,6 +71,11 @@ class SlideProtocolTests(unittest.TestCase):
                         "layout": "equation",
                         "title": "G(s)",
                         "equation": "G(s) = Y(s)/U(s)",
+                        "bullets": [
+                            "G(s) is output over input.",
+                            "It is the compact model of the plant.",
+                            "Later slides will use this same G(s).",
+                        ],
                     },
                 },
                 {
@@ -70,6 +85,11 @@ class SlideProtocolTests(unittest.TestCase):
                         "layout": "checkpoint",
                         "title": "Pause",
                         "question": "What does the plant do?",
+                        "bullets": [
+                            "Name the input the plant receives.",
+                            "Name the output it produces.",
+                            "Do not just repeat the word plant.",
+                        ],
                     },
                 },
             ]
@@ -82,6 +102,7 @@ class SlideProtocolTests(unittest.TestCase):
         self.assertEqual(beats[2].slide.equation, "G(s) = Y(s)/U(s)")
         self.assertEqual(beats[3].slide.question, "What does the plant do?")
         self.assertTrue(all(beat.slide.title for beat in beats))
+        self.assertTrue(all(len(beat.slide.bullets) >= 3 for beat in beats))
 
     def test_unsupported_layouts_and_board_payloads_are_dropped(self):
         beats = _normalize_beats(
@@ -112,6 +133,11 @@ class SlideProtocolTests(unittest.TestCase):
                         "layout": "concept",
                         "title": "Lead",
                         "body": "Adds phase.",
+                        "bullets": [
+                            "A lead network adds phase near crossover.",
+                            "That extra phase improves stability margin.",
+                            "The zero sits closer to the origin than the pole.",
+                        ],
                     },
                 },
             ]
@@ -119,6 +145,7 @@ class SlideProtocolTests(unittest.TestCase):
         self.assertEqual(len(beats), 1)
         self.assertEqual(beats[0].title, "Valid concept")
         self.assertEqual(beats[0].slide.layout, "concept")
+        self.assertEqual(len(beats[0].slide.bullets), 3)
 
     def test_diagram_requires_usable_mermaid(self):
         beats = _normalize_beats(
@@ -155,6 +182,11 @@ class SlideProtocolTests(unittest.TestCase):
                         "layout": "diagram",
                         "title": "Loop",
                         "mermaid": "```mermaid\nflowchart LR\n  A --> B\n```",
+                        "bullets": [
+                            "A feeds B.",
+                            "Read left to right.",
+                            "This is the smallest useful picture of the idea.",
+                        ],
                     },
                 },
             ]
@@ -163,6 +195,7 @@ class SlideProtocolTests(unittest.TestCase):
         self.assertEqual(beats[0].title, "Good diagram")
         self.assertTrue(beats[0].slide.mermaid.startswith("flowchart"))
         self.assertNotIn("```", beats[0].slide.mermaid)
+        self.assertGreaterEqual(len(beats[0].slide.bullets), 3)
 
     def test_equation_and_checkpoint_required_content_is_enforced(self):
         beats = _normalize_beats(
@@ -189,6 +222,11 @@ class SlideProtocolTests(unittest.TestCase):
                         "layout": "equation",
                         "title": "G(s)",
                         "equation": "G(s) = K / s",
+                        "bullets": [
+                            "K sets the gain.",
+                            "The pole at the origin is an integrator.",
+                            "This is the plant we will compensate.",
+                        ],
                     },
                 },
                 {
@@ -198,6 +236,11 @@ class SlideProtocolTests(unittest.TestCase):
                         "layout": "checkpoint",
                         "title": "Check",
                         "question": "What does K do?",
+                        "bullets": [
+                            "Think about speed of response.",
+                            "Think about how large the output gets.",
+                            "Do not invent a number the notes never gave.",
+                        ],
                     },
                 },
             ]
@@ -205,6 +248,84 @@ class SlideProtocolTests(unittest.TestCase):
         self.assertEqual([beat.title for beat in beats], ["Good equation", "Good checkpoint"])
         self.assertEqual(beats[0].slide.equation, "G(s) = K / s")
         self.assertEqual(beats[1].slide.question, "What does K do?")
+        self.assertGreaterEqual(len(beats[0].slide.bullets), 3)
+        self.assertGreaterEqual(len(beats[1].slide.bullets), 3)
+
+    def test_every_layout_keeps_teaching_bullets(self):
+        bullets = [
+            "First teaching point from the notes.",
+            "Second teaching point with a consequence.",
+            "Third teaching point the student can reuse.",
+        ]
+        beats = _normalize_beats(
+            [
+                {
+                    "title": "Title",
+                    "speaking": "Here is the map for the lesson.",
+                    "slide": {"layout": "title", "title": "Lead", "bullets": bullets},
+                },
+                {
+                    "title": "Equation",
+                    "speaking": "Here is the relation.",
+                    "slide": {
+                        "layout": "equation",
+                        "title": "G(s)",
+                        "equation": "G(s) = K / s",
+                        "bullets": bullets,
+                    },
+                },
+                {
+                    "title": "Diagram",
+                    "speaking": "Here is the picture.",
+                    "slide": {
+                        "layout": "diagram",
+                        "title": "Loop",
+                        "mermaid": "flowchart LR\n  A --> B",
+                        "bullets": bullets,
+                    },
+                },
+                {
+                    "title": "Steps",
+                    "speaking": "Here is the method.",
+                    "slide": {
+                        "layout": "steps",
+                        "title": "Method",
+                        "steps": ["Find crossover", "Add phase", "Check margin"],
+                        "bullets": bullets,
+                    },
+                },
+            ]
+        )
+        self.assertEqual(len(beats), 4)
+        for beat in beats:
+            self.assertEqual(beat.slide.bullets, bullets)
+
+    def test_missing_bullets_are_recovered_from_other_slide_text(self):
+        beats = _normalize_beats(
+            [
+                {
+                    "title": "Recovered concept",
+                    "speaking": "The body still has the teaching points.",
+                    "slide": {
+                        "layout": "concept",
+                        "title": "Feedback",
+                        "body": (
+                            "Feedback compares output with the reference. "
+                            "The error is what the controller actually sees. "
+                            "Without that comparison, the loop is open."
+                        ),
+                    },
+                },
+                {
+                    "title": "Title with no notes",
+                    "speaking": "A title slide still needs teaching bullets.",
+                    "slide": {"layout": "title", "title": "Lead compensators"},
+                },
+            ]
+        )
+        self.assertEqual(len(beats), 1)
+        self.assertEqual(beats[0].title, "Recovered concept")
+        self.assertGreaterEqual(len(beats[0].slide.bullets), 3)
 
     def test_beats_are_capped_and_fields_are_bounded(self):
         raw = [
@@ -226,7 +347,7 @@ class SlideProtocolTests(unittest.TestCase):
         self.assertLessEqual(len(beats[0].slide.title), 80)
         self.assertLessEqual(len(beats[0].slide.body), 400)
         self.assertEqual(len(beats[0].slide.bullets), 6)
-        self.assertLessEqual(len(beats[0].slide.bullets[0]), 140)
+        self.assertLessEqual(len(beats[0].slide.bullets[0]), 180)
 
 
 class ClassroomServiceTests(unittest.TestCase):
@@ -360,6 +481,7 @@ class ClassroomServiceTests(unittest.TestCase):
         self.assertEqual(lesson.grounding, "full")
         self.assertTrue(all(beat.speaking for beat in lesson.beats))
         self.assertTrue(all(beat.slide.layout for beat in lesson.beats))
+        self.assertTrue(all(len(beat.slide.bullets) >= 3 for beat in lesson.beats))
         self.assertTrue(
             any(beat.slide.layout == "diagram" and beat.slide.mermaid for beat in lesson.beats)
         )

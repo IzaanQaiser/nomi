@@ -38,16 +38,23 @@ _PREPARE_SYSTEM = (
     "should be one short sentence. If it is, produce 4 to 8 coherent teaching "
     "beats a later step can play and pause. Build intuition before "
     "details. Stay grounded in the retrieved sources and do not invent facts. "
-    "Each beat has spoken narration (`speaking`) and a visual slide. Keep "
-    "slide copy concise: titles, a short body, bullets, an equation, or a "
-    "checkpoint question. Do not duplicate the narration verbatim into the "
-    "slide body. Choose layouts intentionally: title, concept, equation, "
-    "bullets, steps, diagram, or checkpoint. Use a diagram only when a "
-    "relationship genuinely needs a picture. Mermaid must be simple and robust: "
-    "prefer flowchart, stateDiagram, or sequenceDiagram. Avoid experimental "
-    "syntax and dense diagrams. Produce Mermaid syntax only, never SVG, HTML, "
-    "or coordinates. Produce no x/y positions and no board commands. Include "
-    "a useful checkpoint beat when appropriate. "
+    "Each beat has spoken narration (`speaking`) and a visual slide. "
+    "EVERY slide MUST include 3 to 5 teaching bullets in `slide.bullets`. "
+    "Those bullets are the student's notes: specific, sourced, and useful on "
+    "their own. This includes title, concept, equation, diagram, steps, and "
+    "checkpoint slides. Title-slide bullets preview what the lesson will cover. "
+    "Equation-slide bullets explain what the symbols mean and when to use it. "
+    "Diagram-slide bullets say what to read from the picture. Checkpoint "
+    "bullets are hints for thinking, not the answer. Never leave bullets empty, "
+    "never write vague bullets like 'key idea' or 'see diagram', and do not "
+    "paste the narration verbatim into the bullets. Keep titles short. Choose "
+    "layouts intentionally: title, concept, equation, bullets, steps, diagram, "
+    "or checkpoint. Use a diagram only when a relationship genuinely needs a "
+    "picture. Mermaid must be simple and robust: prefer flowchart, "
+    "stateDiagram, or sequenceDiagram. Avoid experimental syntax and dense "
+    "diagrams. Produce Mermaid syntax only, never SVG, HTML, or coordinates. "
+    "Produce no x/y positions and no board commands. Include a useful "
+    "checkpoint beat when appropriate. "
     "Respond with STRICT JSON only, no prose and no code fences, matching:\n"
     '{"in_scope": bool, "topic": str, "title": str, "reason": str|null, '
     '"summary": str, "beats": [{"title": str, "speaking": str, '
@@ -74,9 +81,10 @@ _SLIDE_LAYOUTS = {
 }
 _MIN_BEATS = 4
 _MAX_BEATS = 8
+_MIN_BULLETS = 3
 _MAX_BULLETS = 6
 _MAX_STEPS = 8
-_MAX_BULLET_CHARS = 140
+_MAX_BULLET_CHARS = 180
 _MAX_STEP_CHARS = 160
 _MAX_TITLE_CHARS = 80
 _MAX_SUBTITLE_CHARS = 120
@@ -310,6 +318,40 @@ def _normalize_mermaid(value: object) -> str:
     return text
 
 
+def _sentence_list(value: str, *, max_items: int, max_len: int) -> list[str]:
+    parts = re.split(r"(?<=[.!?])\s+", value)
+    return _string_list(parts, max_items=max_items, max_len=max_len)
+
+
+def _ensure_teaching_bullets(
+    bullets: list[str],
+    *,
+    body: str,
+    steps: list[str],
+    caption: str,
+    callout: str,
+    equation: str,
+    question: str,
+) -> list[str]:
+    if len(bullets) >= _MIN_BULLETS:
+        return bullets[:_MAX_BULLETS]
+    extras: list[str] = list(bullets)
+    for candidate in (
+        steps,
+        _sentence_list(body, max_items=_MAX_BULLETS, max_len=_MAX_BULLET_CHARS),
+        _sentence_list(caption, max_items=_MAX_BULLETS, max_len=_MAX_BULLET_CHARS),
+        _sentence_list(callout, max_items=_MAX_BULLETS, max_len=_MAX_BULLET_CHARS),
+        [equation] if equation else [],
+        [question] if question else [],
+    ):
+        extras = _string_list(
+            extras + candidate, max_items=_MAX_BULLETS, max_len=_MAX_BULLET_CHARS
+        )
+        if len(extras) >= _MIN_BULLETS:
+            return extras
+    return extras
+
+
 def _normalize_slide(raw: object, beat_title: str) -> ClassroomSlide | None:
     if not isinstance(raw, dict):
         return None
@@ -331,6 +373,15 @@ def _normalize_slide(raw: object, beat_title: str) -> ClassroomSlide | None:
         raw.get("steps"), max_items=_MAX_STEPS, max_len=_MAX_STEP_CHARS
     )
     mermaid = _normalize_mermaid(raw.get("mermaid")) if layout == "diagram" else ""
+    bullets = _ensure_teaching_bullets(
+        bullets,
+        body=body,
+        steps=steps,
+        caption=caption,
+        callout=callout,
+        equation=equation,
+        question=question,
+    )
 
     if layout == "diagram" and not mermaid:
         return None
@@ -338,11 +389,11 @@ def _normalize_slide(raw: object, beat_title: str) -> ClassroomSlide | None:
         return None
     if layout == "checkpoint" and not question:
         return None
-    if layout == "bullets" and not bullets:
-        return None
     if layout == "steps" and not steps:
         return None
     if layout == "title" and not title:
+        return None
+    if len(bullets) < _MIN_BULLETS:
         return None
 
     return ClassroomSlide(
@@ -350,7 +401,7 @@ def _normalize_slide(raw: object, beat_title: str) -> ClassroomSlide | None:
         title=title,
         subtitle=subtitle,
         body=body,
-        bullets=bullets if layout in {"bullets", "concept", "title"} else [],
+        bullets=bullets,
         equation=equation if layout in {"equation", "concept"} else "",
         caption=caption,
         callout=callout,

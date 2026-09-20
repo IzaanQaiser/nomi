@@ -34,7 +34,7 @@ struct ClassroomSlideView: View {
 
     private var layoutAlignment: Alignment {
         switch slide.layout {
-        case .title, .checkpoint: .center
+        case .checkpoint: .center
         default: .topLeading
         }
     }
@@ -57,21 +57,25 @@ struct ClassroomSlideView: View {
     }
 
     private var titleLayout: some View {
-        VStack(spacing: 16) {
-            Text(slide.title)
-                .font(.system(size: 46, weight: .bold))
-                .tracking(-1)
-                .multilineTextAlignment(.center)
-                .foregroundStyle(NomiTheme.ink)
-            if !slide.subtitle.isEmpty {
-                Text(slide.subtitle)
-                    .font(.title2)
+        VStack(alignment: .leading, spacing: 22) {
+            VStack(spacing: 16) {
+                Text(slide.title)
+                    .font(.system(size: 42, weight: .bold))
+                    .tracking(-1)
                     .multilineTextAlignment(.center)
-                    .foregroundStyle(NomiTheme.secondaryInk)
+                    .foregroundStyle(NomiTheme.ink)
+                    .frame(maxWidth: .infinity)
+                if !slide.subtitle.isEmpty {
+                    Text(slide.subtitle)
+                        .font(.title2)
+                        .multilineTextAlignment(.center)
+                        .foregroundStyle(NomiTheme.secondaryInk)
+                        .frame(maxWidth: .infinity)
+                }
             }
+            teachingBullets
+            Spacer(minLength: 0)
         }
-        .frame(maxWidth: 640)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     private var conceptLayout: some View {
@@ -84,6 +88,7 @@ struct ClassroomSlideView: View {
                     .lineSpacing(7)
                     .fixedSize(horizontal: false, vertical: true)
             }
+            teachingBullets
             if !slide.callout.isEmpty {
                 calloutCard(slide.callout)
             }
@@ -92,16 +97,16 @@ struct ClassroomSlideView: View {
     }
 
     private var equationLayout: some View {
-        VStack(alignment: .leading, spacing: 28) {
+        VStack(alignment: .leading, spacing: 22) {
             slideHeading
             Text(slide.equation)
-                .font(.system(size: 46, weight: .medium, design: .serif))
+                .font(.system(size: 40, weight: .medium, design: .serif))
                 .foregroundStyle(NomiTheme.ink)
                 .multilineTextAlignment(.center)
                 .minimumScaleFactor(0.45)
                 .lineLimit(3)
                 .frame(maxWidth: .infinity)
-                .padding(.vertical, 18)
+                .padding(.vertical, 10)
             if !slide.caption.isEmpty {
                 Text(slide.caption)
                     .font(.title3)
@@ -115,6 +120,7 @@ struct ClassroomSlideView: View {
                     .frame(maxWidth: .infinity, alignment: .center)
                     .multilineTextAlignment(.center)
             }
+            teachingBullets
             Spacer(minLength: 0)
         }
     }
@@ -145,6 +151,7 @@ struct ClassroomSlideView: View {
     private var stepsLayout: some View {
         VStack(alignment: .leading, spacing: 20) {
             slideHeading
+            teachingBullets
             ViewThatFits(in: .horizontal) {
                 HStack(alignment: .top, spacing: 12) {
                     ForEach(Array(slide.steps.enumerated()), id: \.offset, content: stepCard)
@@ -164,18 +171,33 @@ struct ClassroomSlideView: View {
                     .font(.title2.weight(.bold))
                     .foregroundStyle(NomiTheme.ink)
             }
-            MermaidDiagramView(
-                source: slide.mermaid,
-                caption: slide.caption,
-                bodyText: slide.body
-            )
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            ViewThatFits(in: .horizontal) {
+                HStack(alignment: .top, spacing: 24) {
+                    teachingBullets
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    mermaidBlock
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                }
+                VStack(alignment: .leading, spacing: 14) {
+                    teachingBullets
+                    mermaidBlock
+                        .frame(maxWidth: .infinity, minHeight: 220, maxHeight: .infinity)
+                }
+            }
             if !slide.caption.isEmpty {
                 Text(slide.caption)
                     .font(.subheadline)
                     .foregroundStyle(NomiTheme.secondaryInk)
             }
         }
+    }
+
+    private var mermaidBlock: some View {
+        MermaidDiagramView(
+            source: slide.mermaid,
+            caption: slide.caption,
+            bodyText: slide.body
+        )
     }
 
     private var checkpointLayout: some View {
@@ -186,7 +208,7 @@ struct ClassroomSlideView: View {
                 .textCase(.uppercase)
                 .foregroundStyle(NomiTheme.blue)
             Text(slide.question)
-                .font(.system(size: 34, weight: .bold))
+                .font(.system(size: 30, weight: .bold))
                 .tracking(-0.5)
                 .multilineTextAlignment(.center)
                 .foregroundStyle(NomiTheme.ink)
@@ -195,14 +217,11 @@ struct ClassroomSlideView: View {
                     .font(.title3)
                     .multilineTextAlignment(.center)
                     .foregroundStyle(NomiTheme.secondaryInk)
-            } else {
-                Text("Take a moment before we continue.")
-                    .font(.title3)
-                    .multilineTextAlignment(.center)
-                    .foregroundStyle(NomiTheme.secondaryInk)
             }
+            teachingBullets
+                .frame(maxWidth: 560, alignment: .leading)
         }
-        .frame(maxWidth: 620)
+        .frame(maxWidth: 640)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
@@ -216,6 +235,14 @@ struct ClassroomSlideView: View {
                 Text(slide.subtitle)
                     .font(.title3)
                     .foregroundStyle(NomiTheme.secondaryInk)
+            }
+        }
+    }
+
+    private var teachingBullets: some View {
+        Group {
+            if !slide.bullets.isEmpty {
+                bulletList
             }
         }
     }
@@ -302,7 +329,12 @@ struct ClassroomSlideView: View {
         slide: ClassroomSlide(
             layout: .title,
             title: "Block Diagrams",
-            subtitle: "How signals move through a system"
+            subtitle: "How signals move through a system",
+            bullets: [
+                "A block is a system with an input and an output.",
+                "Arrows are signals, not wires or decoration.",
+                "By the end you should be able to read a closed loop out loud.",
+            ]
         ),
         progressLabel: "Slide 1 of 6"
     )
@@ -316,6 +348,11 @@ struct ClassroomSlideView: View {
             layout: .concept,
             title: "What a block diagram is",
             body: "Each block is a system. Arrows are signals. The picture shows cause flowing into effect.",
+            bullets: [
+                "Read left to right unless a feedback path says otherwise.",
+                "The summing junction is where two signals meet.",
+                "If you cannot name the output of a block, the picture is incomplete.",
+            ],
             callout: "Read left to right unless a feedback path says otherwise."
         ),
         progressLabel: "Slide 2 of 6"
@@ -329,6 +366,11 @@ struct ClassroomSlideView: View {
         slide: ClassroomSlide(
             layout: .equation,
             title: "The transfer function",
+            bullets: [
+                "G(s) is output over input in the s-domain.",
+                "It compresses the whole plant into one relation.",
+                "Use it when you want frequency-domain behavior, not a time sketch.",
+            ],
             equation: "G(s) = Y(s) / U(s)",
             caption: "Output over input, in the s-domain."
         ),
@@ -360,6 +402,11 @@ struct ClassroomSlideView: View {
         slide: ClassroomSlide(
             layout: .steps,
             title: "How to read the diagram",
+            bullets: [
+                "Always start at the reference, not at a random block.",
+                "Name what the plant does before looking at feedback.",
+                "The loop only matters once you can say what comes back.",
+            ],
             steps: [
                 "Start at the reference.",
                 "Follow the plant.",
@@ -377,6 +424,11 @@ struct ClassroomSlideView: View {
         slide: ClassroomSlide(
             layout: .diagram,
             title: "The loop",
+            bullets: [
+                "Read left to right: input, plant, output.",
+                "The plant is the system being asked to do the work.",
+                "A later arrow can send the output back for comparison.",
+            ],
             caption: "The plant sits between input and output.",
             mermaid: "flowchart LR\n  Input --> Plant --> Output"
         ),
@@ -391,6 +443,11 @@ struct ClassroomSlideView: View {
         slide: ClassroomSlide(
             layout: .diagram,
             title: "The loop",
+            bullets: [
+                "If the picture fails to render, the notes still stand.",
+                "The plant sits between input and output.",
+                "Cause still flows left to right even without the diagram.",
+            ],
             caption: "The plant sits between input and output.",
             mermaid: "this is not mermaid [["
         ),
@@ -405,6 +462,11 @@ struct ClassroomSlideView: View {
         slide: ClassroomSlide(
             layout: .checkpoint,
             title: "Check your understanding",
+            bullets: [
+                "Name the signal that dropped.",
+                "Say whether the feedback path adds or subtracts.",
+                "If you cannot, rewind one slide and try again.",
+            ],
             question: "If the output suddenly drops, what does the feedback path do?"
         ),
         progressLabel: "Slide 6 of 6"

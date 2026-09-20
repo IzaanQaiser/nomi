@@ -95,9 +95,14 @@ class MockProvider(LLMProvider):
                                 "then we'll build the picture around it."
                             ),
                             "slide": {
-                                "layout": "concept",
-                                "title": "Core definition",
-                                "body": "What this idea is, in one short sentence.",
+                                "layout": "title",
+                                "title": title,
+                                "subtitle": "What this lesson will make clear",
+                                "bullets": [
+                                    "Name the idea in one sentence from the notes.",
+                                    "See how it changes the system's behavior.",
+                                    "Leave with a check you can answer out loud.",
+                                ],
                             },
                         },
                         {
@@ -111,6 +116,11 @@ class MockProvider(LLMProvider):
                                     "flowchart LR\n"
                                     "  Input --> Plant --> Output"
                                 ),
+                                "bullets": [
+                                    "Read the diagram left to right.",
+                                    "The plant sits between the input and the output.",
+                                    "A later loop can send the output back for comparison.",
+                                ],
                             },
                         },
                         {
@@ -120,6 +130,11 @@ class MockProvider(LLMProvider):
                                 "layout": "equation",
                                 "title": "Key relation",
                                 "equation": "G(s) = K (s + z) / (s + p)",
+                                "bullets": [
+                                    "G(s) is output over input in the s-domain.",
+                                    "The zero at -z is what adds the useful phase.",
+                                    "Keep the pole farther left than the zero.",
+                                ],
                             },
                         },
                         {
@@ -131,6 +146,11 @@ class MockProvider(LLMProvider):
                                 "layout": "checkpoint",
                                 "title": "Check your understanding",
                                 "question": "Restate the idea in one sentence.",
+                                "bullets": [
+                                    "Say what the block does, not just its name.",
+                                    "Mention one effect on the transient response.",
+                                    "If you cannot, rewind one slide and try again.",
+                                ],
                             },
                         },
                     ],
