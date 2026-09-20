@@ -98,6 +98,143 @@ _BOARD_REPAIR_SYSTEM = (
     "styles, and outline/filled rectangle styles. Never include action IDs."
 )
 
+_POINT_SCHEMA = {
+    "type": "object",
+    "properties": {"x": {"type": "number"}, "y": {"type": "number"}},
+    "required": ["x", "y"],
+    "additionalProperties": False,
+}
+_FRAME_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "x": {"type": "number"},
+        "y": {"type": "number"},
+        "width": {"type": "number"},
+        "height": {"type": "number"},
+    },
+    "required": ["x", "y", "width", "height"],
+    "additionalProperties": False,
+}
+
+
+def _action_schema(action_type: str, properties: dict, required: list[str]) -> dict:
+    return {
+        "type": "object",
+        "properties": {
+            "type": {"type": "string", "const": action_type},
+            "reveal_at": {"type": "number"},
+            **properties,
+        },
+        "required": ["type", "reveal_at", *required],
+        "additionalProperties": False,
+    }
+
+
+_BOARD_REPAIR_JSON_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "beats": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 6,
+            "items": {
+                "type": "object",
+                "properties": {
+                    "index": {"type": "integer"},
+                    "actions": {
+                        "type": "array",
+                        "minItems": 1,
+                        "maxItems": 12,
+                        "items": {
+                            "anyOf": [
+                                _action_schema(
+                                    "write_text",
+                                    {
+                                        "text": {"type": "string"},
+                                        "position": _POINT_SCHEMA,
+                                        "style": {
+                                            "type": "string",
+                                            "enum": [
+                                                "heading",
+                                                "body",
+                                                "equation",
+                                                "label",
+                                                "emphasis",
+                                            ],
+                                        },
+                                    },
+                                    ["text", "position", "style"],
+                                ),
+                                _action_schema(
+                                    "draw_line",
+                                    {
+                                        "start": _POINT_SCHEMA,
+                                        "end": _POINT_SCHEMA,
+                                        "style": {
+                                            "type": "string",
+                                            "enum": ["solid", "dashed"],
+                                        },
+                                    },
+                                    ["start", "end", "style"],
+                                ),
+                                _action_schema(
+                                    "draw_arrow",
+                                    {"start": _POINT_SCHEMA, "end": _POINT_SCHEMA},
+                                    ["start", "end"],
+                                ),
+                                _action_schema(
+                                    "draw_rectangle",
+                                    {
+                                        "frame": _FRAME_SCHEMA,
+                                        "style": {
+                                            "type": "string",
+                                            "enum": ["outline", "filled"],
+                                        },
+                                    },
+                                    ["frame", "style"],
+                                ),
+                                _action_schema(
+                                    "draw_axes",
+                                    {
+                                        "frame": _FRAME_SCHEMA,
+                                        "x_label": {"type": "string"},
+                                        "y_label": {"type": "string"},
+                                    },
+                                    ["frame", "x_label", "y_label"],
+                                ),
+                                _action_schema(
+                                    "plot_polyline",
+                                    {
+                                        "points": {
+                                            "type": "array",
+                                            "minItems": 2,
+                                            "maxItems": 24,
+                                            "items": _POINT_SCHEMA,
+                                        },
+                                        "style": {
+                                            "type": "string",
+                                            "enum": ["solid", "dashed"],
+                                        },
+                                    },
+                                    ["points", "style"],
+                                ),
+                                _action_schema(
+                                    "highlight", {"frame": _FRAME_SCHEMA}, ["frame"]
+                                ),
+                                _action_schema("clear", {}, []),
+                            ]
+                        },
+                    },
+                },
+                "required": ["index", "actions"],
+                "additionalProperties": False,
+            },
+        }
+    },
+    "required": ["beats"],
+    "additionalProperties": False,
+}
+
 _BOARD_KINDS = {"diagram", "equation", "list", "none"}
 _MAX_BEATS = 6
 _MAX_BOARD_ACTIONS_PER_BEAT = 12
@@ -506,7 +643,14 @@ def _repair_missing_board_actions(
         f"Course context:\n<<<CONTEXT>>>\n{context[:12_000]}\n<<<END>>>"
     )
     try:
-        data = _extract_json(provider.chat(_BOARD_REPAIR_SYSTEM, user, json_mode=True))
+        data = _extract_json(
+            provider.chat(
+                _BOARD_REPAIR_SYSTEM,
+                user,
+                json_mode=True,
+                json_schema=_BOARD_REPAIR_JSON_SCHEMA,
+            )
+        )
     except (ValueError, json.JSONDecodeError):
         return beats, False
 

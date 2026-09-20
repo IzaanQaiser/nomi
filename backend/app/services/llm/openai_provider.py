@@ -37,7 +37,14 @@ class OpenAIProvider(LLMProvider):
             data = resp.json()["data"]
         return [item["embedding"] for item in data]
 
-    def chat(self, system: str, user: str, *, json_mode: bool = False) -> str:
+    def chat(
+        self,
+        system: str,
+        user: str,
+        *,
+        json_mode: bool = False,
+        json_schema: dict | None = None,
+    ) -> str:
         payload = {
             "model": self.settings.openai_chat_model,
             "messages": [
@@ -46,7 +53,16 @@ class OpenAIProvider(LLMProvider):
             ],
             "temperature": 0.2,
         }
-        if json_mode:
+        if json_schema is not None:
+            payload["response_format"] = {
+                "type": "json_schema",
+                "json_schema": {
+                    "name": "nomi_response",
+                    "strict": True,
+                    "schema": json_schema,
+                },
+            }
+        elif json_mode:
             payload["response_format"] = {"type": "json_object"}
 
         with httpx.Client(timeout=120) as client:

@@ -150,8 +150,9 @@ class BoardProtocolTests(unittest.TestCase):
         )
 
         class RepairProvider:
-            def chat(self, system, user, *, json_mode=False):
+            def chat(self, system, user, *, json_mode=False, json_schema=None):
                 self.json_mode = json_mode
+                self.json_schema = json_schema
                 return """{
                     "beats": [{
                         "index": 0,
@@ -182,6 +183,7 @@ class BoardProtocolTests(unittest.TestCase):
         )
         self.assertTrue(ready)
         self.assertTrue(provider.json_mode)
+        self.assertIsNotNone(provider.json_schema)
         self.assertEqual(len(repaired[0].board.actions), 2)
         self.assertEqual(repaired[0].board.actions[0].id, "b0-a0")
 
@@ -201,7 +203,7 @@ class BoardProtocolTests(unittest.TestCase):
         )
 
         class EmptyRepairProvider:
-            def chat(self, system, user, *, json_mode=False):
+            def chat(self, system, user, *, json_mode=False, json_schema=None):
                 return '{"beats":[{"index":0,"actions":[]}]}'
 
         repaired, ready = _repair_missing_board_actions(

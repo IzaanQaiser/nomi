@@ -25,11 +25,18 @@ class LLMProvider(ABC):
         """
 
     @abstractmethod
-    def chat(self, system: str, user: str, *, json_mode: bool = False) -> str:
+    def chat(
+        self,
+        system: str,
+        user: str,
+        *,
+        json_mode: bool = False,
+        json_schema: dict | None = None,
+    ) -> str:
         """Return a completion for a system + user prompt.
 
-        `json_mode` asks providers to enforce a JSON response at the transport
-        layer in addition to any schema instructions in the prompt.
+        `json_mode` asks providers to enforce JSON at the transport layer.
+        `json_schema` requests strict structured output when supported.
         """
 
     @abstractmethod
