@@ -8,7 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from .config import get_settings
 from .db import init_db
-from .routers import chat, notes, projects, shadow, sources
+from .routers import chat, exam, notes, projects, shadow, sources
 from .routers.sources import recover_pending_sources
 
 
@@ -37,6 +37,7 @@ app.include_router(sources.router)
 app.include_router(notes.router)
 app.include_router(chat.router)
 app.include_router(shadow.router)
+app.include_router(exam.router)
 
 
 @app.get("/health")

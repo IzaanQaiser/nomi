@@ -128,3 +128,47 @@ class SolutionResponse(BaseModel):
     solution: str
     problem: str | None = None
     grounding: str | None = None
+
+
+# ---- Exam prep ---------------------------------------------------------------
+
+class ExamQuestion(BaseModel):
+    number: str            # "1", "2a", ...
+    prompt: str
+    marks: int
+    # Suggested blank writing lines to leave under the question on the PDF.
+    answer_lines: int = 6
+
+
+class ExamSection(BaseModel):
+    title: str
+    instructions: str | None = None
+    questions: list[ExamQuestion]
+
+
+class ExamOut(BaseModel):
+    title: str
+    duration_minutes: int
+    total_marks: int
+    instructions: str | None = None
+    sections: list[ExamSection]
+
+
+class GradedQuestion(BaseModel):
+    number: str
+    awarded: int
+    marks: int
+    feedback: str
+
+
+class ExamGradeRequest(BaseModel):
+    # The exam that was sat, plus one base64 page image per filled notebook page.
+    exam: ExamOut
+    page_images_base64: list[str] = []
+
+
+class ExamGradeResponse(BaseModel):
+    awarded: int
+    total: int
+    summary: str
+    questions: list[GradedQuestion]
