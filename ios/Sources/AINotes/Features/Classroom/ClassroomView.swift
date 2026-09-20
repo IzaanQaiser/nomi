@@ -34,6 +34,7 @@ final class ClassroomSession {
 
     private var prepareGeneration = 0
     private var askGeneration = 0
+    private var emptyListenAttempts = 0
     private var voice: VoiceListener?
 
     init(project: Project, seed: ClassroomSeed = ClassroomSeed()) {
@@ -150,8 +151,15 @@ final class ClassroomSession {
         guard phase == .teaching, !isAsking else { return }
         isAsking = true
         askError = nil
+        askInput = ""
+        emptyListenAttempts = 0
         player.pauseForAsk()
-        cancelListening()
+        let generation = askGeneration
+        Task {
+            try? await Task.sleep(for: .milliseconds(200))
+            guard generation == askGeneration, isAsking else { return }
+            await startListeningForAsk()
+        }
     }
 
     func continueLesson() {
@@ -174,15 +182,18 @@ final class ClassroomSession {
         player.stopAnswerSpeech()
     }
 
-    func toggleListening() async {
-        if isListening {
-            cancelListening()
-            return
-        }
-        guard isAsking, !isSendingAsk else { return }
+    func retryAskListening() async {
+        emptyListenAttempts = 0
+        askError = nil
+        await startListeningForAsk()
+    }
+
+    func startListeningForAsk() async {
+        guard isAsking, !isSendingAsk, !isListening else { return }
         player.stopAnswerSpeech()
         let listener = voice ?? VoiceListener()
         voice = listener
+        listener.emptyTimeout = 4.0
         listener.onPartial = { [weak self] text in
             self?.askInput = String(text.prefix(2000))
         }
@@ -191,9 +202,20 @@ final class ClassroomSession {
             self.isListening = false
             let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
             if trimmed.isEmpty {
-                self.askError = "I didn’t catch that. Type it, or try the mic again."
+                self.emptyListenAttempts += 1
+                if self.emptyListenAttempts < 2, self.isAsking {
+                    self.askError = "I didn’t catch that. I’ll listen again — ask out loud."
+                    Task {
+                        try? await Task.sleep(for: .milliseconds(280))
+                        await self.startListeningForAsk()
+                    }
+                } else {
+                    self.askError = "I didn’t catch that. Tap try again, then speak."
+                }
                 return
             }
+            self.emptyListenAttempts = 0
+            self.askError = nil
             self.askInput = String(trimmed.prefix(2000))
             Task { await self.sendAsk() }
         }
@@ -203,9 +225,10 @@ final class ClassroomSession {
         }
         let allowed = await listener.requestAccess()
         guard allowed else {
-            askError = "Allow microphone and speech recognition to ask out loud."
+            askError = "Allow microphone and speech recognition so you can ask out loud."
             return
         }
+        guard isAsking, !isSendingAsk else { return }
         do {
             askError = nil
             isListening = true
@@ -235,12 +258,16 @@ final class ClassroomSession {
             guard generation == askGeneration, isAsking else { return }
             isSendingAsk = false
             askInput = ""
+            emptyListenAttempts = 0
             let answer = response.answer.trimmingCharacters(in: .whitespacesAndNewlines)
             exchanges.append(ClassroomQAExchange(question: question, answer: answer))
             if exchanges.count > 3 {
                 exchanges.removeFirst(exchanges.count - 3)
             }
-            player.speakAnswer(answer) {}
+            player.speakAnswer(answer) { [weak self] in
+                guard let self, generation == self.askGeneration, self.isAsking else { return }
+                Task { await self.startListeningForAsk() }
+            }
         } catch {
             guard generation == askGeneration, isAsking else { return }
             isSendingAsk = false
