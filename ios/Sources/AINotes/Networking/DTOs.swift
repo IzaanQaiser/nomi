@@ -110,6 +110,32 @@ struct ClassroomSlide: Codable, Hashable {
         case layout, title, subtitle, body, bullets, equation, caption, callout, steps, mermaid, question
     }
 
+    init(
+        layout: ClassroomSlideLayout,
+        title: String = "",
+        subtitle: String = "",
+        body: String = "",
+        bullets: [String] = [],
+        equation: String = "",
+        caption: String = "",
+        callout: String = "",
+        steps: [String] = [],
+        mermaid: String = "",
+        question: String = ""
+    ) {
+        self.layout = layout
+        self.title = title
+        self.subtitle = subtitle
+        self.body = body
+        self.bullets = bullets
+        self.equation = equation
+        self.caption = caption
+        self.callout = callout
+        self.steps = steps
+        self.mermaid = mermaid
+        self.question = question
+    }
+
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         let rawLayout = try container.decodeIfPresent(String.self, forKey: .layout) ?? "concept"

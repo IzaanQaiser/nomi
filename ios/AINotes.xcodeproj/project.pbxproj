@@ -16,10 +16,12 @@
 		4F6F13F2B58C846745EF329E /* ExamPDFRenderer.swift in Sources */ = {isa = PBXBuildFile; fileRef = E32A9DA72323CC125FAAF338 /* ExamPDFRenderer.swift */; };
 		5574495BBFCA963F83868B91 /* ExamController.swift in Sources */ = {isa = PBXBuildFile; fileRef = BAFC02237898134C0C49C1A8 /* ExamController.swift */; };
 		56E9B90C5182C3AB0BD94489 /* PDFNoteStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 232BF27888FAD67E5A1CB1C5 /* PDFNoteStore.swift */; };
+		6304E9657CD3B7F13F7C379F /* mermaid.html in Resources */ = {isa = PBXBuildFile; fileRef = 75DEB3CE7DC1652DB2A0AFF1 /* mermaid.html */; };
 		6AE3D5E539FC60D95E7FA9C2 /* NomiGridBackground.swift in Sources */ = {isa = PBXBuildFile; fileRef = 83098333AEF801F14BF06ADC /* NomiGridBackground.swift */; };
 		6E27BD9D535CD127CFF6B03C /* NomiView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5121BDAB652C33EF3227270A /* NomiView.swift */; };
 		7072889C3D649B5341721BB3 /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3B7C3834AC2B3B2549409FB2 /* RootView.swift */; };
 		735D2799C9F0182DCEA09000 /* SourcesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 635835C96E63796AB7AAEC78 /* SourcesView.swift */; };
+		7DFD02B1A89B6BECAACA7EB7 /* ClassroomSlideView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DC2FC137F94C236F8E9AB4B4 /* ClassroomSlideView.swift */; };
 		88A88BA2AD43B1C07B1E2C89 /* CourseContextView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DFD3079071FB36886B29BF05 /* CourseContextView.swift */; };
 		97AFC6CCC0F97D574169F8BF /* DTOs.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20B655AC6266D0A42ED869CB /* DTOs.swift */; };
 		A35E78F080C7CCD4D73DD89E /* PaperStyle.swift in Sources */ = {isa = PBXBuildFile; fileRef = 63AF9CCC0C632A30ACEA2CA1 /* PaperStyle.swift */; };
@@ -30,12 +32,12 @@
 		B4B86CD0CACFC4F9B57E3AE2 /* PageImageStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 32494E3A63F521213FB6314A /* PageImageStore.swift */; };
 		B5870D84B849FE901100B0D1 /* ClassroomNarrator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 353788D16D9E5BF576F5FE44 /* ClassroomNarrator.swift */; };
 		B8F35CF8163154C661E820F6 /* ChatView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AEFDC36DA86F377C78357395 /* ChatView.swift */; };
-		BC9C13E147A2AF2941F6E3EF /* ClassroomBoardRenderer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 22DAA1E7824107DA512FE894 /* ClassroomBoardRenderer.swift */; };
 		C5DB9AC741160E937F70C0DF /* ProjectDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1B8819978A4F153A485BB095 /* ProjectDetailView.swift */; };
 		CA82DD47EA7BAA6C2236D59D /* ProjectShellView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2150C64B92C8C4547D8384A1 /* ProjectShellView.swift */; };
 		CC4A090CCC1AD1E05867729B /* ExamStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = E139EE49834D2DA9A276C1A5 /* ExamStore.swift */; };
 		D03241E026F053FF09174685 /* APIClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = B6A0F7838FC7E64FA1C2BEC1 /* APIClient.swift */; };
 		D403DB5517A38AB344AB5CC5 /* PastExamsSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D5654092B17F48164BE3A0C /* PastExamsSheet.swift */; };
+		D8180EB6A7BA7B4184DC52C3 /* MermaidDiagramView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC19C71E274AAA9E9A7F1B5F /* MermaidDiagramView.swift */; };
 		DE29E0382ED23ECB25AC56E9 /* OnboardingFlowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0A5CB77D203F0F87CC0E8AA /* OnboardingFlowView.swift */; };
 		E11356B9E3FB1B82EA7215A8 /* ClassroomLessonPlayer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 04A1583D274357D84F424671 /* ClassroomLessonPlayer.swift */; };
 		E1A0C0F2F66FF4B03D5698E7 /* ShadowingEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = AE44840C36985C7FBA06409C /* ShadowingEngine.swift */; };
@@ -43,6 +45,7 @@
 		F0795B477D265B5199396FCD /* FirstLaunchView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 47ABD97E6DD12C9BAE5D997C /* FirstLaunchView.swift */; };
 		F0C40F5E1FD66D4ECF838F5F /* AINotesApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = E751C20F05FF2EA70BA2AE9D /* AINotesApp.swift */; };
 		F240286D09069D942DFB96D0 /* AppConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00FA25184C2F94DDD9D261BD /* AppConfig.swift */; };
+		F5CEB1E4DE523A8C46D81036 /* mermaid.min.js in Resources */ = {isa = PBXBuildFile; fileRef = 669ED105F30AE61EA6A25342 /* mermaid.min.js */; };
 		F739627B5CE397D4D334C94E /* InkPagerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3223D9B6722E3A15FE4A64A8 /* InkPagerView.swift */; };
 /* End PBXBuildFile section */
 
@@ -55,7 +58,6 @@
 		1B8819978A4F153A485BB095 /* ProjectDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectDetailView.swift; sourceTree = "<group>"; };
 		20B655AC6266D0A42ED869CB /* DTOs.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DTOs.swift; sourceTree = "<group>"; };
 		2150C64B92C8C4547D8384A1 /* ProjectShellView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectShellView.swift; sourceTree = "<group>"; };
-		22DAA1E7824107DA512FE894 /* ClassroomBoardRenderer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClassroomBoardRenderer.swift; sourceTree = "<group>"; };
 		232BF27888FAD67E5A1CB1C5 /* PDFNoteStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PDFNoteStore.swift; sourceTree = "<group>"; };
 		3223D9B6722E3A15FE4A64A8 /* InkPagerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InkPagerView.swift; sourceTree = "<group>"; };
 		32494E3A63F521213FB6314A /* PageImageStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PageImageStore.swift; sourceTree = "<group>"; };
@@ -66,11 +68,14 @@
 		5121BDAB652C33EF3227270A /* NomiView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NomiView.swift; sourceTree = "<group>"; };
 		635835C96E63796AB7AAEC78 /* SourcesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SourcesView.swift; sourceTree = "<group>"; };
 		63AF9CCC0C632A30ACEA2CA1 /* PaperStyle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PaperStyle.swift; sourceTree = "<group>"; };
+		669ED105F30AE61EA6A25342 /* mermaid.min.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; path = mermaid.min.js; sourceTree = "<group>"; };
+		75DEB3CE7DC1652DB2A0AFF1 /* mermaid.html */ = {isa = PBXFileReference; lastKnownFileType = text.html; path = mermaid.html; sourceTree = "<group>"; };
 		83098333AEF801F14BF06ADC /* NomiGridBackground.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NomiGridBackground.swift; sourceTree = "<group>"; };
 		864E8A7C87BFA3F295D7AAF4 /* NotePenIsland.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotePenIsland.swift; sourceTree = "<group>"; };
 		866324A84A4B0BC38F6D2B85 /* ExamLoadingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExamLoadingView.swift; sourceTree = "<group>"; };
 		94458247361C0263A2E14C6B /* NotesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotesView.swift; sourceTree = "<group>"; };
 		AA45C39EA21491C01F181FDF /* ExamMascotView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExamMascotView.swift; sourceTree = "<group>"; };
+		AC19C71E274AAA9E9A7F1B5F /* MermaidDiagramView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MermaidDiagramView.swift; sourceTree = "<group>"; };
 		AC553F06A3FF96FAD09CF89B /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		AE44840C36985C7FBA06409C /* ShadowingEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShadowingEngine.swift; sourceTree = "<group>"; };
 		AEFDC36DA86F377C78357395 /* ChatView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatView.swift; sourceTree = "<group>"; };
@@ -80,6 +85,7 @@
 		BAFC02237898134C0C49C1A8 /* ExamController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExamController.swift; sourceTree = "<group>"; };
 		C0A5CB77D203F0F87CC0E8AA /* OnboardingFlowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingFlowView.swift; sourceTree = "<group>"; };
 		CAD6BAC7BCA677FCECB4746F /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		DC2FC137F94C236F8E9AB4B4 /* ClassroomSlideView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClassroomSlideView.swift; sourceTree = "<group>"; };
 		DFD3079071FB36886B29BF05 /* CourseContextView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CourseContextView.swift; sourceTree = "<group>"; };
 		E139EE49834D2DA9A276C1A5 /* ExamStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExamStore.swift; sourceTree = "<group>"; };
 		E32A9DA72323CC125FAAF338 /* ExamPDFRenderer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExamPDFRenderer.swift; sourceTree = "<group>"; };
@@ -99,6 +105,15 @@
 				2C5675A2133A74F70CDFBF89 /* Networking */,
 			);
 			path = AINotes;
+			sourceTree = "<group>";
+		};
+		11AA3671BA56ACE9BDAE94F3 /* Resources */ = {
+			isa = PBXGroup;
+			children = (
+				75DEB3CE7DC1652DB2A0AFF1 /* mermaid.html */,
+				669ED105F30AE61EA6A25342 /* mermaid.min.js */,
+			);
+			path = Resources;
 			sourceTree = "<group>";
 		};
 		2C5675A2133A74F70CDFBF89 /* Networking */ = {
@@ -153,6 +168,7 @@
 		9CFDC803DD27E87DE9F2C392 = {
 			isa = PBXGroup;
 			children = (
+				11AA3671BA56ACE9BDAE94F3 /* Resources */,
 				D0B0B21FBFFC2E1204FF5436 /* Sources */,
 				457F823A5BF2ACFAB98778F8 /* Products */,
 			);
@@ -180,10 +196,11 @@
 		B116193248A6D7A1C95D5276 /* Classroom */ = {
 			isa = PBXGroup;
 			children = (
-				22DAA1E7824107DA512FE894 /* ClassroomBoardRenderer.swift */,
 				04A1583D274357D84F424671 /* ClassroomLessonPlayer.swift */,
 				353788D16D9E5BF576F5FE44 /* ClassroomNarrator.swift */,
+				DC2FC137F94C236F8E9AB4B4 /* ClassroomSlideView.swift */,
 				06D5291BDD557BFCFAE88F55 /* ClassroomView.swift */,
+				AC19C71E274AAA9E9A7F1B5F /* MermaidDiagramView.swift */,
 			);
 			path = Classroom;
 			sourceTree = "<group>";
@@ -307,6 +324,8 @@
 			buildActionMask = 2147483647;
 			files = (
 				B355EAB3910D7B6D8976097B /* Assets.xcassets in Resources */,
+				6304E9657CD3B7F13F7C379F /* mermaid.html in Resources */,
+				F5CEB1E4DE523A8C46D81036 /* mermaid.min.js in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -321,9 +340,9 @@
 				D03241E026F053FF09174685 /* APIClient.swift in Sources */,
 				F240286D09069D942DFB96D0 /* AppConfig.swift in Sources */,
 				B8F35CF8163154C661E820F6 /* ChatView.swift in Sources */,
-				BC9C13E147A2AF2941F6E3EF /* ClassroomBoardRenderer.swift in Sources */,
 				E11356B9E3FB1B82EA7215A8 /* ClassroomLessonPlayer.swift in Sources */,
 				B5870D84B849FE901100B0D1 /* ClassroomNarrator.swift in Sources */,
+				7DFD02B1A89B6BECAACA7EB7 /* ClassroomSlideView.swift in Sources */,
 				B06B09D33524DBD4C4CB90C8 /* ClassroomView.swift in Sources */,
 				88A88BA2AD43B1C07B1E2C89 /* CourseContextView.swift in Sources */,
 				97AFC6CCC0F97D574169F8BF /* DTOs.swift in Sources */,
@@ -336,6 +355,7 @@
 				F0795B477D265B5199396FCD /* FirstLaunchView.swift in Sources */,
 				F739627B5CE397D4D334C94E /* InkPagerView.swift in Sources */,
 				19C1EE07FFAE9E2CA4C84B68 /* MascotView.swift in Sources */,
+				D8180EB6A7BA7B4184DC52C3 /* MermaidDiagramView.swift in Sources */,
 				6AE3D5E539FC60D95E7FA9C2 /* NomiGridBackground.swift in Sources */,
 				6E27BD9D535CD127CFF6B03C /* NomiView.swift in Sources */,
 				311924AE56E3DA7C9E559BDF /* NotePenIsland.swift in Sources */,

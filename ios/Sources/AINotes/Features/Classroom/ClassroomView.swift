@@ -37,7 +37,7 @@ final class ClassroomSession {
         if heading.localizedCaseInsensitiveContains(project.name) {
             return heading
         }
-        return "\(project.name) \(heading)"
+        return "\(project.name) · \(heading)"
     }
 
     func loadSuggestions() async {
@@ -109,7 +109,7 @@ final class ClassroomSession {
     }
 }
 
-/// Course-grounded lesson picker, then a classroom stage with a board and Nomi.
+/// Course-grounded lesson picker, then a slide lesson with Nomi narrating.
 /// `ClassroomSeed` is the later hook from live tutoring.
 struct ClassroomView: View {
     let project: Project
@@ -121,6 +121,7 @@ struct ClassroomView: View {
     @State private var session: ClassroomSession
     @State private var hasAppeared = false
     @State private var showLessonSources = false
+    @State private var isAskingNomi = false
 
     init(project: Project, seed: ClassroomSeed = ClassroomSeed()) {
         self.project = project
@@ -152,6 +153,14 @@ struct ClassroomView: View {
                 hasAppeared = true
             } else {
                 withAnimation(.easeOut(duration: 0.45)) { hasAppeared = true }
+            }
+        }
+        .onChange(of: session.phase) { _, phase in
+            if phase == .teaching {
+                isAskingNomi = false
+                session.player.play()
+            } else {
+                isAskingNomi = false
             }
         }
         .onChange(of: scenePhase) { _, phase in
@@ -218,9 +227,9 @@ struct ClassroomView: View {
             ExamLoadingView(
                 phrases: [
                     "Opening your sources…",
-                    "Checking this is in the course…",
-                    "Laying out the lesson…",
-                    "Getting the board ready…",
+                    "Finding the right material…",
+                    "Building your lesson…",
+                    "Putting the visuals together…",
                 ]
             )
 
@@ -232,73 +241,138 @@ struct ClassroomView: View {
     }
 
     private var stage: some View {
-        VStack(spacing: 0) {
-            HStack(spacing: 14) {
-                Button {
-                    session.resetToPicker()
-                } label: {
-                    Image(systemName: "chevron.left")
-                        .font(.title3.weight(.bold))
-                        .frame(width: 46, height: 46)
+        GeometryReader { proxy in
+            let sideWidth = min(320, max(240, proxy.size.width * 0.27))
+
+            VStack(spacing: 0) {
+                stageHeader
+
+                HStack(alignment: .top, spacing: 22) {
+                    if let slide = session.player.currentSlide {
+                        ClassroomSlideView(
+                            slide: slide,
+                            progressLabel: session.player.positionLabel
+                        )
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    } else {
+                        ProgressView()
+                            .tint(NomiTheme.blue)
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    }
+
+                    VStack(spacing: 16) {
+                        NomiView(pose: nomiPose)
+                            .frame(width: min(168, sideWidth - 24), height: min(168, sideWidth - 24))
+                            .accessibilityLabel("Nomi")
+
+                        ClassroomNarrationCard(
+                            speaking: session.player.currentBeat?.speaking ?? "",
+                            progress: session.player.narrationProgress,
+                            isPlaying: session.player.isPlaying
+                        )
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    }
+                    .frame(width: sideWidth)
                 }
-                .buttonStyle(.plain)
+                .padding(.horizontal, 24)
+                .padding(.top, 6)
+
+                ClassroomTransportBar(
+                    player: session.player,
+                    onAskNomi: askNomi
+                )
+                .padding(.top, 16)
+                .padding(.bottom, 20)
+            }
+            .overlay {
+                if isAskingNomi {
+                    askNomiPlaceholder
+                }
+            }
+        }
+    }
+
+    private var stageHeader: some View {
+        HStack(spacing: 14) {
+            Button {
+                isAskingNomi = false
+                session.resetToPicker()
+            } label: {
+                Image(systemName: "chevron.left")
+                    .font(.title3.weight(.bold))
+                    .frame(width: 46, height: 46)
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(NomiTheme.ink)
+            .background(NomiTheme.surface, in: Circle())
+            .overlay(Circle().stroke(NomiTheme.hairline, lineWidth: 1))
+            .accessibilityLabel("Back to topics")
+
+            Text(session.displayTitle)
+                .font(.title3.bold())
                 .foregroundStyle(NomiTheme.ink)
-                .background(NomiTheme.surface, in: Circle())
-                .overlay(Circle().stroke(NomiTheme.hairline, lineWidth: 1))
-                .accessibilityLabel("Back to topics")
+                .lineLimit(1)
 
-                Text(session.displayTitle)
-                    .font(.title3.bold())
-                    .foregroundStyle(NomiTheme.ink)
-                    .lineLimit(1)
+            Spacer(minLength: 8)
 
-                Spacer(minLength: 8)
-
-                if let lesson = session.lesson {
-                    Button {
-                        showLessonSources = true
-                    } label: {
-                        HStack(spacing: 6) {
-                            Text("using \(lesson.sources.count) \(lesson.sources.count == 1 ? "source" : "sources")")
-                            Image(systemName: "chevron.right")
-                                .font(.caption.weight(.bold))
-                        }
+            if let lesson = session.lesson {
+                Button {
+                    showLessonSources = true
+                } label: {
+                    Text("Using \(lesson.sources.count) course \(lesson.sources.count == 1 ? "source" : "sources") ›")
                         .font(.subheadline.weight(.semibold))
                         .foregroundStyle(NomiTheme.blue)
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("Show sources for this lesson")
                 }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Show sources for this lesson")
             }
-            .padding(.horizontal, 22)
-            .padding(.top, 18)
-            .padding(.bottom, 10)
+        }
+        .padding(.horizontal, 22)
+        .padding(.top, 18)
+        .padding(.bottom, 10)
+    }
 
-            HStack(alignment: .center, spacing: 22) {
-                ClassroomBoardView(player: session.player)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+    private var nomiPose: NomiPose {
+        if session.player.isPlaying { return .talk }
+        return .idle
+    }
 
-                VStack(spacing: 14) {
-                    NomiView(pose: session.player.playbackState == .playing ? .talk : .idle)
-                        .frame(width: 168, height: 168)
-                        .accessibilityLabel("Nomi")
+    private func askNomi() {
+        session.player.pause()
+        isAskingNomi = true
+    }
 
-                    if let beat = session.player.currentBeat {
-                        Text(beat.title)
-                            .font(.subheadline.weight(.semibold))
-                            .foregroundStyle(NomiTheme.secondaryInk)
-                            .multilineTextAlignment(.center)
-                            .lineLimit(2)
-                            .frame(maxWidth: 190)
-                    }
+    private var askNomiPlaceholder: some View {
+        ZStack {
+            NomiTheme.ink.opacity(0.12)
+                .ignoresSafeArea()
+                .onTapGesture { isAskingNomi = false }
+
+            VStack(spacing: 12) {
+                Text("Ask Nomi")
+                    .font(.title3.weight(.bold))
+                    .foregroundStyle(NomiTheme.ink)
+                Text("You can ask from this lesson next. For now the lecture is paused.")
+                    .font(.body)
+                    .multilineTextAlignment(.center)
+                    .foregroundStyle(NomiTheme.secondaryInk)
+                Button("Back to the lesson") {
+                    isAskingNomi = false
                 }
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(.white)
+                .padding(.horizontal, 18)
+                .padding(.vertical, 10)
+                .background(NomiTheme.blue, in: Capsule())
             }
-            .padding(.horizontal, 28)
-            .padding(.top, 8)
-
-            ClassroomTransportBar(player: session.player)
-                .padding(.top, 18)
-                .padding(.bottom, 22)
+            .padding(28)
+            .frame(maxWidth: 420)
+            .background(NomiTheme.surface, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: 24, style: .continuous)
+                    .stroke(NomiTheme.hairline, lineWidth: 1)
+            }
+            .shadow(color: NomiTheme.ink.opacity(0.08), radius: 18, y: 8)
         }
     }
 
@@ -494,187 +568,81 @@ private struct ClassroomPickerForm: View {
     }
 }
 
-private struct ClassroomBoardView: View {
-    let player: ClassroomLessonPlayer
+private struct ClassroomNarrationCard: View {
+    let speaking: String
+    let progress: Double
+    let isPlaying: Bool
 
     var body: some View {
-        ZStack {
-            RoundedRectangle(cornerRadius: 28, style: .continuous)
-                .fill(NomiTheme.surface)
-                .overlay {
-                    RoundedRectangle(cornerRadius: 28, style: .continuous)
-                        .stroke(NomiTheme.hairline, lineWidth: 1)
-                }
-                .shadow(color: NomiTheme.ink.opacity(0.04), radius: 18, y: 8)
-
-            if let beat = player.currentBeat {
-                VStack(alignment: .leading, spacing: 14) {
-                    HStack(spacing: 12) {
-                        Text(player.positionLabel.uppercased())
-                            .font(.caption.weight(.bold))
-                            .tracking(1.1)
-                            .foregroundStyle(NomiTheme.blue)
-
-                        ProgressView(value: player.progress)
-                            .tint(NomiTheme.blue)
-                    }
-
-                    Text(beat.title)
-                        .font(.system(size: 24, weight: .bold))
-                        .tracking(-0.5)
-                        .foregroundStyle(NomiTheme.ink)
-
-                    Group {
-                        slidePreview(for: beat.slide)
-                    }
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-
-                    Text(beat.speaking)
-                        .font(.subheadline)
-                        .foregroundStyle(NomiTheme.secondaryInk)
-                        .lineSpacing(3)
-                        .lineLimit(3)
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 10)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .background(
-                            NomiTheme.paper,
-                            in: RoundedRectangle(cornerRadius: 14, style: .continuous)
-                        )
-                }
-                .padding(28)
-            } else {
-                ProgressView()
-                    .tint(NomiTheme.blue)
-            }
+        ScrollView(showsIndicators: false) {
+            Text(caption)
+                .font(.body)
+                .lineSpacing(5)
+                .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel("Lesson board")
-        .accessibilityValue(boardValue)
+        .padding(18)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .background(
+            NomiTheme.surface,
+            in: RoundedRectangle(cornerRadius: 22, style: .continuous)
+        )
+        .overlay {
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
+                .stroke(NomiTheme.hairline, lineWidth: 1)
+        }
+        .accessibilityLabel("Nomi is saying")
+        .accessibilityValue(speaking)
     }
 
-    private var boardValue: String {
-        guard let beat = player.currentBeat else { return "Waiting for Nomi" }
-        return "\(player.positionLabel), \(beat.title). \(beat.speaking)"
-    }
-
-    @ViewBuilder
-    private func slidePreview(for slide: ClassroomSlide) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            if !slide.subtitle.isEmpty {
-                Text(slide.subtitle)
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(NomiTheme.blue)
-            }
-            if !slide.equation.isEmpty {
-                Text(slide.equation)
-                    .font(.title3.weight(.semibold).monospaced())
-                    .foregroundStyle(NomiTheme.ink)
-            }
-            if !slide.body.isEmpty {
-                Text(slide.body)
-                    .font(.body)
-                    .foregroundStyle(NomiTheme.ink)
-            }
-            ForEach(slide.bullets, id: \.self) { bullet in
-                Text("• \(bullet)")
-                    .font(.body)
-                    .foregroundStyle(NomiTheme.ink)
-            }
-            ForEach(Array(slide.steps.enumerated()), id: \.offset) { index, step in
-                Text("\(index + 1). \(step)")
-                    .font(.body)
-                    .foregroundStyle(NomiTheme.ink)
-            }
-            if !slide.question.isEmpty {
-                Text(slide.question)
-                    .font(.body.weight(.semibold))
-                    .foregroundStyle(NomiTheme.ink)
-            }
-            if !slide.mermaid.isEmpty {
-                Text("Diagram")
-                    .font(.caption.weight(.bold))
-                    .foregroundStyle(NomiTheme.secondaryInk)
-            }
-            if !slide.callout.isEmpty {
-                Text(slide.callout)
-                    .font(.footnote)
-                    .foregroundStyle(NomiTheme.secondaryInk)
-            }
+    private var caption: AttributedString {
+        var attributed = AttributedString(speaking)
+        attributed.foregroundColor = NomiTheme.ink
+        let highlight = isPlaying || (progress > 0.02 && progress < 0.99)
+        guard highlight, !speaking.isEmpty else { return attributed }
+        let cutoff = min(speaking.count, max(0, Int((progress * Double(speaking.count)).rounded(.down))))
+        guard cutoff > 0, cutoff < speaking.count else { return attributed }
+        let index = speaking.index(speaking.startIndex, offsetBy: cutoff)
+        if let attrIndex = AttributedString.Index(index, within: attributed) {
+            attributed[attrIndex...].foregroundColor = NomiTheme.secondaryInk
         }
+        return attributed
     }
 }
 
 private struct ClassroomTransportBar: View {
     let player: ClassroomLessonPlayer
+    let onAskNomi: () -> Void
 
     var body: some View {
-        HStack(spacing: 24) {
-            control(
-                "previous",
-                systemImage: "backward.end.fill",
-                enabled: player.canMoveBackward,
-                action: player.moveBackward
-            )
-
-            control(
-                playbackTitle,
-                systemImage: playbackIcon,
-                prominent: true,
-                action: player.togglePlayback
-            )
-
-            control(
-                "next",
-                systemImage: "forward.end.fill",
-                enabled: player.canMoveForward,
-                action: player.moveForward
-            )
-
-            control("ask nomi", systemImage: "bubble.left.fill", enabled: false) {}
+        HStack(spacing: 44) {
+            control("Previous", enabled: player.canMoveBackward, action: player.moveBackward)
+            control(playbackTitle, prominent: true, action: player.togglePlayback)
+            control("Ask Nomi", action: onAskNomi)
         }
-        .padding(.horizontal, 18)
-        .padding(.vertical, 10)
-        .background(NomiTheme.surface, in: Capsule())
-        .overlay(Capsule().stroke(NomiTheme.hairline, lineWidth: 1))
-        .shadow(color: NomiTheme.ink.opacity(0.06), radius: 12, y: 5)
+        .padding(.vertical, 8)
+        .frame(maxWidth: .infinity)
     }
 
     private var playbackTitle: String {
         switch player.playbackState {
-        case .playing: "pause"
-        case .completed: "replay"
-        case .ready, .paused: "play"
-        }
-    }
-
-    private var playbackIcon: String {
-        switch player.playbackState {
-        case .playing: "pause.fill"
-        case .completed: "arrow.counterclockwise"
-        case .ready, .paused: "play.fill"
+        case .playing: "Pause"
+        case .completed, .ready, .paused: "Continue"
         }
     }
 
     private func control(
         _ title: String,
-        systemImage: String,
         enabled: Bool = true,
         prominent: Bool = false,
         action: @escaping () -> Void
     ) -> some View {
         Button(action: action) {
-            VStack(spacing: 6) {
-                Image(systemName: systemImage)
-                    .font(.system(size: 16, weight: .semibold))
-                    .frame(height: 20)
-                Text(title)
-                    .font(.caption.weight(.semibold))
-            }
-            .foregroundStyle(prominent ? Color.white : NomiTheme.ink)
-            .frame(minWidth: 68, minHeight: 48)
-            .background(prominent ? NomiTheme.blue : Color.clear, in: Capsule())
-            .opacity(enabled ? 1 : 0.35)
+            Text(title)
+                .font(.body.weight(prominent ? .semibold : .medium))
+                .foregroundStyle(prominent ? NomiTheme.blue : NomiTheme.ink)
+                .opacity(enabled ? 1 : 0.35)
+                .padding(.horizontal, 6)
+                .padding(.vertical, 8)
         }
         .buttonStyle(.plain)
         .disabled(!enabled)

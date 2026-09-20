@@ -3,7 +3,7 @@ import AVFoundation
 /// Native, on-device narration for Classroom lessons.
 ///
 /// The active utterance is tracked by identity so a delayed cancellation
-/// callback can never complete a newer lesson beat after a rewind or reset.
+/// callback can never complete a newer lesson beat after a skip or reset.
 @MainActor
 final class ClassroomNarrator {
     private let synthesizer = AVSpeechSynthesizer()

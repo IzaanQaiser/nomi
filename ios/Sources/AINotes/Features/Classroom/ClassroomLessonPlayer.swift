@@ -24,6 +24,8 @@ final class ClassroomLessonPlayer {
         return lesson.beats[currentBeatIndex]
     }
 
+    var currentSlide: ClassroomSlide? { currentBeat?.slide }
+
     var progress: Double {
         guard let lesson, !lesson.beats.isEmpty else { return 0 }
         if playbackState == .completed { return 1 }
@@ -32,8 +34,10 @@ final class ClassroomLessonPlayer {
 
     var positionLabel: String {
         guard let lesson, !lesson.beats.isEmpty else { return "" }
-        return "Step \(min(currentBeatIndex + 1, lesson.beats.count)) of \(lesson.beats.count)"
+        return "Slide \(min(currentBeatIndex + 1, lesson.beats.count)) of \(lesson.beats.count)"
     }
+
+    var isPlaying: Bool { playbackState == .playing }
 
     var canMoveBackward: Bool { currentBeatIndex > 0 }
 

@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:;" />
+<style>
+  html, body {
+    margin: 0;
+    padding: 0;
+    width: 100%;
+    height: 100%;
+    background: transparent;
+    overflow: hidden;
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", sans-serif;
+  }
+  #diagram {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  #diagram svg {
+    max-width: 100% !important;
+    max-height: 100% !important;
+    width: 100%;
+    height: 100%;
+  }
+</style>
+<script src="mermaid.min.js"></script>
+</head>
+<body>
+<div id="diagram"></div>
+<script>
+  function post(payload) {
+    if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.classroomMermaid) {
+      window.webkit.messageHandlers.classroomMermaid.postMessage(payload);
+    }
+  }
+
+  try {
+    if (typeof mermaid === "undefined") {
+      throw new Error("mermaid runtime missing");
+    }
+    const ink = "#0E1625";
+    const blue = "#1A6EF2";
+    const paper = "#F8FAFC";
+    const line = "#DEE3ED";
+    mermaid.initialize({
+      startOnLoad: false,
+      securityLevel: "strict",
+      theme: "base",
+      fontFamily: "-apple-system, BlinkMacSystemFont, 'SF Pro Text', 'SF Pro Display', sans-serif",
+      flowchart: { htmlLabels: false, useMaxWidth: true, curve: "basis", padding: 12 },
+      sequence: { useMaxWidth: true, actorMargin: 28 },
+      themeVariables: {
+        fontSize: "18px",
+        fontFamily: "-apple-system, BlinkMacSystemFont, 'SF Pro Text', sans-serif",
+        primaryColor: paper,
+        primaryTextColor: ink,
+        primaryBorderColor: blue,
+        lineColor: blue,
+        secondaryColor: "#EEF3FB",
+        tertiaryColor: "#FFFFFF",
+        noteBkgColor: "#EEF3FB",
+        noteTextColor: ink,
+        noteBorderColor: line,
+        actorBkg: paper,
+        actorBorder: blue,
+        actorTextColor: ink,
+        signalColor: blue,
+        labelBoxBkgColor: paper,
+        labelTextColor: ink,
+        mainBkg: paper,
+        nodeBorder: blue,
+        clusterBkg: "#FFFFFF",
+        titleColor: ink
+      }
+    });
+
+    let renderCount = 0;
+    const container = document.getElementById("diagram");
+
+    function fit(svg) {
+      svg.setAttribute("preserveAspectRatio", "xMidYMid meet");
+      svg.removeAttribute("height");
+      svg.removeAttribute("width");
+      svg.style.maxWidth = "100%";
+      svg.style.maxHeight = "100%";
+      svg.style.width = "100%";
+      svg.style.height = "100%";
+    }
+
+    window.renderDiagram = async function(source) {
+      renderCount += 1;
+      const id = "classroom-diagram-" + renderCount;
+      container.innerHTML = "";
+      try {
+        if (typeof source !== "string" || !source.trim()) {
+          throw new Error("empty mermaid source");
+        }
+        await mermaid.parse(source);
+        const { svg } = await mermaid.render(id, source);
+        container.innerHTML = svg;
+        const svgEl = container.querySelector("svg");
+        if (!svgEl) throw new Error("mermaid produced no svg");
+        fit(svgEl);
+        post({ ok: true });
+      } catch (error) {
+        container.innerHTML = "";
+        post({ ok: false, error: String(error && error.message ? error.message : error) });
+      }
+    };
+
+    post({ ok: true, ready: true });
+  } catch (error) {
+    post({ ok: false, error: String(error && error.message ? error.message : error) });
+  }
+</script>
+</body>
+</html>
