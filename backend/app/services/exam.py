@@ -33,10 +33,18 @@ _GEN_SYSTEM = (
 _GRADE_SYSTEM = (
     "You are grading a student's handwritten exam. You are given the exam "
     "(as JSON) and a transcription of what the student wrote. Grade fairly and "
-    "consistently, award partial credit, and be specific about what was missing "
-    "or wrong. Respond with STRICT JSON only matching:\n"
+    "consistently and award partial credit. Grade EVERY question in the exam; if "
+    "an answer is blank, award 0 and say it was not attempted. Never award more "
+    "than a question's marks. "
+    "For each question: 'feedback' says what was missing or wrong (one or two "
+    "sentences). 'correct_answer' gives the right answer — for short questions "
+    "state it concisely; for long or worked questions give the gist of the "
+    "correct approach and where the student went wrong (2-3 sentences), not a "
+    "full worked solution. "
+    "Respond with STRICT JSON only matching:\n"
     '{"awarded": int, "total": int, "summary": str, "questions": '
-    '[{"number": str, "awarded": int, "marks": int, "feedback": str}]}'
+    '[{"number": str, "awarded": int, "marks": int, "feedback": str, '
+    '"correct_answer": str}]}'
 )
 
 _TRANSCRIBE_SYSTEM = (
@@ -126,6 +134,14 @@ def grade_exam(
     raw = provider.chat(_GRADE_SYSTEM, user)
     data = _extract_json(raw)
     result = ExamGradeResponse.model_validate(data)
-    if result.total <= 0:
-        result.total = exam.total_marks
+
+    # Trust the per-question marks over the model's own totals: clamp each award
+    # to its max and derive the overall score so the header always matches the
+    # question-by-question breakdown.
+    for q in result.questions:
+        q.awarded = max(0, min(q.awarded, q.marks))
+    result.awarded = sum(q.awarded for q in result.questions)
+    result.total = exam.total_marks if exam.total_marks > 0 else sum(
+        q.marks for q in result.questions
+    )
     return result

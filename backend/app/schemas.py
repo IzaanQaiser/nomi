@@ -159,6 +159,9 @@ class GradedQuestion(BaseModel):
     awarded: int
     marks: int
     feedback: str
+    # The right answer (short questions) or the gist of the correct approach and
+    # where the student went wrong (long questions).
+    correct_answer: str = ""
 
 
 class ExamGradeRequest(BaseModel):
