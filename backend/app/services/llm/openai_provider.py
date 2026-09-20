@@ -37,19 +37,23 @@ class OpenAIProvider(LLMProvider):
             data = resp.json()["data"]
         return [item["embedding"] for item in data]
 
-    def chat(self, system: str, user: str) -> str:
+    def chat(self, system: str, user: str, *, json_mode: bool = False) -> str:
+        payload = {
+            "model": self.settings.openai_chat_model,
+            "messages": [
+                {"role": "system", "content": system},
+                {"role": "user", "content": user},
+            ],
+            "temperature": 0.2,
+        }
+        if json_mode:
+            payload["response_format"] = {"type": "json_object"}
+
         with httpx.Client(timeout=120) as client:
             resp = client.post(
                 f"{_BASE_URL}/chat/completions",
                 headers=self._headers,
-                json={
-                    "model": self.settings.openai_chat_model,
-                    "messages": [
-                        {"role": "system", "content": system},
-                        {"role": "user", "content": user},
-                    ],
-                    "temperature": 0.2,
-                },
+                json=payload,
             )
             resp.raise_for_status()
             return resp.json()["choices"][0]["message"]["content"]

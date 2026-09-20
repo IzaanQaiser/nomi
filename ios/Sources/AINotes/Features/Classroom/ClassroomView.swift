@@ -525,8 +525,8 @@ private struct ClassroomBoardView: View {
                         .foregroundStyle(NomiTheme.ink)
 
                     Group {
-                        if player.resolvedBoardActions.isEmpty && beat.board.actions.isEmpty {
-                            legacyBoardFallback(for: beat)
+                        if player.resolvedBoardActions.isEmpty {
+                            Color.clear
                         } else {
                             ClassroomBoardRenderer(actions: player.resolvedBoardActions)
                         }
@@ -555,24 +555,6 @@ private struct ClassroomBoardView: View {
         .accessibilityElement(children: .combine)
         .accessibilityLabel("Lesson board")
         .accessibilityValue(boardValue)
-    }
-
-    @ViewBuilder
-    private func legacyBoardFallback(for beat: ClassroomLessonBeat) -> some View {
-        if !beat.board.instruction.isEmpty {
-            VStack(spacing: 12) {
-                Image(systemName: "rectangle.and.pencil.and.ellipsis")
-                    .font(.system(size: 28, weight: .medium))
-                    .foregroundStyle(NomiTheme.blue)
-                Text(beat.board.instruction)
-                    .font(.title3.weight(.medium))
-                    .multilineTextAlignment(.center)
-                    .foregroundStyle(NomiTheme.ink)
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-        } else {
-            Color.clear
-        }
     }
 
     private var boardValue: String {

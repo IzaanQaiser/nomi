@@ -9,6 +9,7 @@ from app.models import Project, Source  # noqa: E402
 from app.services.classroom import (  # noqa: E402
     _normalize_beats,
     _parse_suggestions,
+    _repair_missing_board_actions,
     prepare_lesson,
     suggest_topics,
     teach,
@@ -132,6 +133,82 @@ class BoardProtocolTests(unittest.TestCase):
         )
         self.assertEqual(len(beats[0].board.actions), 1)
         self.assertEqual(beats[0].board.actions[0].type, "clear")
+
+    def test_missing_drawable_actions_are_repaired_and_revalidated(self):
+        beats = _normalize_beats(
+            [
+                {
+                    "title": "Block diagram",
+                    "speaking": "The input enters the plant and produces an output.",
+                    "board": {
+                        "kind": "diagram",
+                        "instruction": "Draw the block diagram.",
+                        "actions": [],
+                    },
+                }
+            ]
+        )
+
+        class RepairProvider:
+            def chat(self, system, user, *, json_mode=False):
+                self.json_mode = json_mode
+                return """{
+                    "beats": [{
+                        "index": 0,
+                        "actions": [
+                            {
+                                "type": "write_text",
+                                "reveal_at": 0.1,
+                                "text": "input",
+                                "position": {"x": 0.1, "y": 0.4},
+                                "style": "label"
+                            },
+                            {
+                                "type": "draw_rectangle",
+                                "reveal_at": 0.4,
+                                "frame": {
+                                    "x": 0.35, "y": 0.3,
+                                    "width": 0.3, "height": 0.2
+                                },
+                                "style": "outline"
+                            }
+                        ]
+                    }]
+                }"""
+
+        provider = RepairProvider()
+        repaired, ready = _repair_missing_board_actions(
+            provider, beats, "block diagrams", "course context"
+        )
+        self.assertTrue(ready)
+        self.assertTrue(provider.json_mode)
+        self.assertEqual(len(repaired[0].board.actions), 2)
+        self.assertEqual(repaired[0].board.actions[0].id, "b0-a0")
+
+    def test_failed_board_repair_is_not_accepted(self):
+        beats = _normalize_beats(
+            [
+                {
+                    "title": "Block diagram",
+                    "speaking": "Here is the system.",
+                    "board": {
+                        "kind": "diagram",
+                        "instruction": "Draw the system.",
+                        "actions": [],
+                    },
+                }
+            ]
+        )
+
+        class EmptyRepairProvider:
+            def chat(self, system, user, *, json_mode=False):
+                return '{"beats":[{"index":0,"actions":[]}]}'
+
+        repaired, ready = _repair_missing_board_actions(
+            EmptyRepairProvider(), beats, "systems", "course context"
+        )
+        self.assertFalse(ready)
+        self.assertEqual(repaired[0].board.actions, [])
 
 
 class ClassroomServiceTests(unittest.TestCase):

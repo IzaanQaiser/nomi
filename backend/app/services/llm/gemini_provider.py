@@ -56,12 +56,13 @@ class GeminiProvider(LLMProvider):
                 vectors.extend(item["values"] for item in data["embeddings"])
         return vectors
 
-    def chat(self, system: str, user: str) -> str:
+    def chat(self, system: str, user: str, *, json_mode: bool = False) -> str:
         return self._generate(
             model=self.settings.gemini_chat_model,
             system=system,
             parts=[{"text": user}],
             temperature=0.2,
+            json_mode=json_mode,
         )
 
     def vision(
