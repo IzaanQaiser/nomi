@@ -88,7 +88,7 @@ private final class ProjectDetailModel {
         }
     }
 
-    func addNotebook(title: String, sourceIDs: [String]) async throws {
+    func addNotebook(title: String, sourceIDs: [String]) async throws -> ProjectNotebook {
         let selectedSources = sourceIDs.compactMap { id in
             sources.first { $0.id == id && $0.kind == "pdf" && $0.status == "ready" }
         }
@@ -118,6 +118,25 @@ private final class ProjectDetailModel {
         }
 
         notebooks.append(notebook)
+        ProjectNotebookStore.save(notebooks, projectID: project.id)
+        return notebook
+    }
+
+    func renameNotebook(_ notebook: ProjectNotebook, to title: String) {
+        guard let index = notebooks.firstIndex(where: { $0.id == notebook.id }) else { return }
+        notebooks[index].title = title
+        ProjectNotebookStore.save(notebooks, projectID: project.id)
+    }
+
+    func deleteNotebook(_ notebook: ProjectNotebook) {
+        guard notebooks.count > 1,
+              notebooks.contains(where: { $0.id == notebook.id })
+        else { return }
+
+        PDFNoteStore.removeLocalNotebook(
+            storageID: notebook.storageID(projectID: project.id)
+        )
+        notebooks.removeAll { $0.id == notebook.id }
         ProjectNotebookStore.save(notebooks, projectID: project.id)
     }
 
@@ -176,7 +195,12 @@ struct ProjectDetailView: View {
     @State private var projectName = ""
     @State private var isDeleting = false
     @State private var isGeneratingExam = false
-    @State private var examNotebook: ProjectNotebook?
+    @State private var notebookForInfo: ProjectNotebook?
+    @State private var notebookPendingRename: ProjectNotebook?
+    @State private var notebookPendingDeletion: ProjectNotebook?
+    @State private var notebookName = ""
+    @State private var notebookToOpen: ProjectNotebook?
+    @State private var pendingCreatedNotebook: ProjectNotebook?
 
     init(
         project: Project,
@@ -206,7 +230,7 @@ struct ProjectDetailView: View {
         .background(NomiTheme.paper.ignoresSafeArea())
         .preferredColorScheme(.light)
         .toolbar(.hidden, for: .navigationBar)
-        .navigationDestination(item: $examNotebook) { notebook in
+        .navigationDestination(item: $notebookToOpen) { notebook in
             ProjectShellView(project: model.project, notebook: notebook)
         }
         .fullScreenCover(isPresented: $isGeneratingExam) {
@@ -230,12 +254,60 @@ struct ProjectDetailView: View {
                 notebookCount: model.notebooks.count
             )
         }
-        .sheet(isPresented: $showNewNotebook) {
+        .sheet(item: $notebookForInfo) { notebook in
+            NotebookInfoSheet(projectID: model.project.id, notebook: notebook)
+        }
+        .alert(
+            "Rename Notebook",
+            isPresented: Binding(
+                get: { notebookPendingRename != nil },
+                set: { if !$0 { notebookPendingRename = nil } }
+            )
+        ) {
+            TextField("Notebook name", text: $notebookName)
+            Button("Cancel", role: .cancel) { notebookPendingRename = nil }
+            Button("Save") {
+                let title = notebookName.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard let notebook = notebookPendingRename, !title.isEmpty else { return }
+                model.renameNotebook(notebook, to: title)
+                notebookPendingRename = nil
+            }
+        } message: {
+            Text("Choose a name that makes this notebook easy to find.")
+        }
+        .confirmationDialog(
+            "Delete \(notebookPendingDeletion?.title ?? "this notebook")?",
+            isPresented: Binding(
+                get: { notebookPendingDeletion != nil },
+                set: { if !$0 { notebookPendingDeletion = nil } }
+            ),
+            titleVisibility: .visible
+        ) {
+            Button("Delete Notebook", role: .destructive) {
+                guard let notebook = notebookPendingDeletion else { return }
+                model.deleteNotebook(notebook)
+                notebookPendingDeletion = nil
+            }
+            Button("Cancel", role: .cancel) { notebookPendingDeletion = nil }
+        } message: {
+            Text("Its pages, ink, and pasted images will be permanently removed.")
+        }
+        .sheet(isPresented: $showNewNotebook, onDismiss: {
+            guard let notebook = pendingCreatedNotebook else { return }
+            pendingCreatedNotebook = nil
+            Task { @MainActor in
+                await Task.yield()
+                notebookToOpen = notebook
+            }
+        }) {
             NewNotebookSheet(
                 projectName: model.project.name,
                 sources: readyPDFSources,
                 onCreate: { title, sourceIDs in
-                    try await model.addNotebook(title: title, sourceIDs: sourceIDs)
+                    pendingCreatedNotebook = try await model.addNotebook(
+                        title: title,
+                        sourceIDs: sourceIDs
+                    )
                 }
             )
         }
@@ -458,7 +530,7 @@ struct ProjectDetailView: View {
             do {
                 let notebook = try await model.generateExamNotebook()
                 isGeneratingExam = false
-                examNotebook = notebook
+                notebookToOpen = notebook
             } catch {
                 isGeneratingExam = false
                 model.errorMessage = error.localizedDescription
@@ -533,12 +605,36 @@ struct ProjectDetailView: View {
                         NavigationLink {
                             ProjectShellView(project: model.project, notebook: notebook)
                         } label: {
-                            NotebookCard(notebook: notebook)
+                            NotebookCard(projectID: model.project.id, notebook: notebook)
                         }
                         .buttonStyle(.plain)
+                        .contextMenu {
+                            Button {
+                                notebookName = notebook.title
+                                notebookPendingRename = notebook
+                            } label: {
+                                Label("Rename", systemImage: "pencil")
+                            }
+
+                            Button {
+                                notebookForInfo = notebook
+                            } label: {
+                                Label("Notebook Info", systemImage: "info.circle")
+                            }
+
+                            Divider()
+
+                            Button(role: .destructive) {
+                                notebookPendingDeletion = notebook
+                            } label: {
+                                Label("Delete Notebook", systemImage: "trash")
+                            }
+                            .disabled(model.notebooks.count == 1)
+                        }
                     }
 
                     Button {
+                        pendingCreatedNotebook = nil
                         showNewNotebook = true
                     } label: {
                         NewNotebookCard()
@@ -595,6 +691,7 @@ private struct SourcePreviewCard: View {
 }
 
 private struct NotebookCard: View {
+    let projectID: String
     let notebook: ProjectNotebook
 
     var body: some View {
@@ -634,10 +731,13 @@ private struct NotebookCard: View {
     }
 
     private var notebookSubtitle: String {
-        guard let count = notebook.pageSources?.count, count > 0 else {
-            return "Blank canvas"
+        if let count = notebook.pageSources?.count, count > 0 {
+            return "\(count) context \(count == 1 ? "source" : "sources") included"
         }
-        return "\(count) context \(count == 1 ? "source" : "sources") included"
+        if PDFNoteStore.hasPDF(projectId: notebook.storageID(projectID: projectID)) {
+            return "PDF-backed notebook"
+        }
+        return "Blank canvas"
     }
 }
 
@@ -652,11 +752,8 @@ private struct NewNotebookCard: View {
             Text("New Notebook")
                 .font(.headline)
                 .foregroundStyle(NomiTheme.ink)
-            Text("Start a fresh canvas")
-                .font(.subheadline)
-                .foregroundStyle(NomiTheme.secondaryInk)
         }
-        .frame(maxWidth: .infinity, minHeight: 150)
+        .frame(maxWidth: .infinity, minHeight: 112)
         .background(NomiTheme.blue.opacity(0.025), in: RoundedRectangle(cornerRadius: 20))
         .overlay {
             RoundedRectangle(cornerRadius: 20)
@@ -835,6 +932,70 @@ private struct NewNotebookSheet: View {
                 isCreating = false
             }
         }
+    }
+}
+
+private struct NotebookInfoSheet: View {
+    @Environment(\.dismiss) private var dismiss
+
+    let projectID: String
+    let notebook: ProjectNotebook
+
+    private var hasPDFPages: Bool {
+        PDFNoteStore.hasPDF(projectId: notebook.storageID(projectID: projectID))
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    HStack(spacing: 14) {
+                        Image(systemName: "book.closed.fill")
+                            .font(.title2)
+                            .foregroundStyle(NomiTheme.blue)
+                            .frame(width: 52, height: 52)
+                            .background(NomiTheme.blue.opacity(0.09), in: RoundedRectangle(cornerRadius: 14))
+
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(notebook.title)
+                                .font(.headline)
+                            Text(hasPDFPages ? "PDF-backed notebook" : "Paper notebook")
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    .padding(.vertical, 4)
+                }
+
+                Section("Details") {
+                    LabeledContent(
+                        "Created",
+                        value: notebook.createdAt.formatted(date: .abbreviated, time: .shortened)
+                    )
+                    LabeledContent(
+                        "Starting context",
+                        value: "\(notebook.pageSources?.count ?? 0)"
+                    )
+                }
+
+                if let pageSources = notebook.pageSources, !pageSources.isEmpty {
+                    Section("Pages From Project Context") {
+                        ForEach(pageSources) { source in
+                            Label(source.title, systemImage: "doc.fill")
+                                .lineLimit(2)
+                        }
+                    }
+                }
+            }
+            .navigationTitle("Notebook Info")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") { dismiss() }
+                }
+            }
+        }
+        .presentationDetents([.medium, .large])
     }
 }
 
