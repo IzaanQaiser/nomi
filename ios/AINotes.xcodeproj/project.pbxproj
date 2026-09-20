@@ -27,6 +27,10 @@
 		B355EAB3910D7B6D8976097B /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = AC553F06A3FF96FAD09CF89B /* Assets.xcassets */; };
 		B4B86CD0CACFC4F9B57E3AE2 /* PageImageStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 32494E3A63F521213FB6314A /* PageImageStore.swift */; };
 		B8F35CF8163154C661E820F6 /* ChatView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AEFDC36DA86F377C78357395 /* ChatView.swift */; };
+		7E4A1C0B9F2D4E8A1B6C3D02 /* ClassroomView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7E4A1C0B9F2D4E8A1B6C3D01 /* ClassroomView.swift */; };
+		8F5B2D1C0A3E4F6B7C8D9E02 /* ClassroomLessonPlayer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8F5B2D1C0A3E4F6B7C8D9E01 /* ClassroomLessonPlayer.swift */; };
+		9A6C3E2D1B4F5A7C8D9E0F02 /* ClassroomNarrator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9A6C3E2D1B4F5A7C8D9E0F01 /* ClassroomNarrator.swift */; };
+		AB7D4F3E2C5A6B8D9E0F1A02 /* ClassroomBoardRenderer.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB7D4F3E2C5A6B8D9E0F1A01 /* ClassroomBoardRenderer.swift */; };
 		C5DB9AC741160E937F70C0DF /* ProjectDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1B8819978A4F153A485BB095 /* ProjectDetailView.swift */; };
 		CA82DD47EA7BAA6C2236D59D /* ProjectShellView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2150C64B92C8C4547D8384A1 /* ProjectShellView.swift */; };
 		CC4A090CCC1AD1E05867729B /* ExamStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = E139EE49834D2DA9A276C1A5 /* ExamStore.swift */; };
@@ -70,6 +74,10 @@
 		BAFC02237898134C0C49C1A8 /* ExamController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExamController.swift; sourceTree = "<group>"; };
 		C0A5CB77D203F0F87CC0E8AA /* OnboardingFlowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingFlowView.swift; sourceTree = "<group>"; };
 		CAD6BAC7BCA677FCECB4746F /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		7E4A1C0B9F2D4E8A1B6C3D01 /* ClassroomView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClassroomView.swift; sourceTree = "<group>"; };
+		8F5B2D1C0A3E4F6B7C8D9E01 /* ClassroomLessonPlayer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClassroomLessonPlayer.swift; sourceTree = "<group>"; };
+		9A6C3E2D1B4F5A7C8D9E0F01 /* ClassroomNarrator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClassroomNarrator.swift; sourceTree = "<group>"; };
+		AB7D4F3E2C5A6B8D9E0F1A01 /* ClassroomBoardRenderer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClassroomBoardRenderer.swift; sourceTree = "<group>"; };
 		DFD3079071FB36886B29BF05 /* CourseContextView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CourseContextView.swift; sourceTree = "<group>"; };
 		E139EE49834D2DA9A276C1A5 /* ExamStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExamStore.swift; sourceTree = "<group>"; };
 		E32A9DA72323CC125FAAF338 /* ExamPDFRenderer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExamPDFRenderer.swift; sourceTree = "<group>"; };
@@ -205,6 +213,7 @@
 			isa = PBXGroup;
 			children = (
 				F65DBDDFC3566E8EF6FE7CA6 /* Chat */,
+				7E4A1C0B9F2D4E8A1B6C3D03 /* Classroom */,
 				94452AA1B244A65F02A50501 /* Exam */,
 				BAD5E12E4AE3A2D7576D2ED2 /* Notes */,
 				9195BC2349DAEDBBDA6EE8EE /* Project */,
@@ -213,6 +222,17 @@
 				4CCDAFF1FA8A8A5F3C51C357 /* Sources */,
 			);
 			path = Features;
+			sourceTree = "<group>";
+		};
+		7E4A1C0B9F2D4E8A1B6C3D03 /* Classroom */ = {
+			isa = PBXGroup;
+			children = (
+				AB7D4F3E2C5A6B8D9E0F1A01 /* ClassroomBoardRenderer.swift */,
+				9A6C3E2D1B4F5A7C8D9E0F01 /* ClassroomNarrator.swift */,
+				8F5B2D1C0A3E4F6B7C8D9E01 /* ClassroomLessonPlayer.swift */,
+				7E4A1C0B9F2D4E8A1B6C3D01 /* ClassroomView.swift */,
+			);
+			path = Classroom;
 			sourceTree = "<group>";
 		};
 		F65DBDDFC3566E8EF6FE7CA6 /* Chat */ = {
@@ -298,6 +318,10 @@
 				D03241E026F053FF09174685 /* APIClient.swift in Sources */,
 				F240286D09069D942DFB96D0 /* AppConfig.swift in Sources */,
 				B8F35CF8163154C661E820F6 /* ChatView.swift in Sources */,
+				7E4A1C0B9F2D4E8A1B6C3D02 /* ClassroomView.swift in Sources */,
+				8F5B2D1C0A3E4F6B7C8D9E02 /* ClassroomLessonPlayer.swift in Sources */,
+				9A6C3E2D1B4F5A7C8D9E0F02 /* ClassroomNarrator.swift in Sources */,
+				AB7D4F3E2C5A6B8D9E0F1A02 /* ClassroomBoardRenderer.swift in Sources */,
 				88A88BA2AD43B1C07B1E2C89 /* CourseContextView.swift in Sources */,
 				97AFC6CCC0F97D574169F8BF /* DTOs.swift in Sources */,
 				1DAD3241567917C81A87BD28 /* ExamBreakdownView.swift in Sources */,

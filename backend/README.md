@@ -86,7 +86,24 @@ configured:
 - `GET /projects/{id}/sources`, `POST .../sources/text`, `POST .../sources/pdf`
 - `GET/PUT /projects/{id}/notes`
 - `POST /projects/{id}/chat` -> grounded answer + citations
+- `GET /projects/{id}/classroom/suggestions` -> three course-grounded topic names
+- `POST /projects/{id}/classroom/prepare` -> in-scope lesson plan (beats, sources, passages)
+- `POST /projects/{id}/classroom/teach` -> a sourced lesson, with optional history
 - `POST /projects/{id}/shadow` -> live tutor analysis (image + context)
+
+### Classroom board protocol v2
+
+`classroom/prepare` returns `board_protocol_version: 2`. Every beat contains an
+ordered `board.actions` array. Coordinates are normalized to `[0, 1]` relative
+to the board, with `(0, 0)` at the top-left. Supported operations are
+`write_text`, `draw_line`, `draw_arrow`, `draw_rectangle`, `draw_axes`,
+`plot_polyline`, `highlight`, and `clear`. Actions persist between beats;
+`clear` resets Nomi's board layer. The server validates geometry, assigns stable
+action IDs, and removes unsupported or malformed model output before returning
+the lesson. A `write_text.position` is the text's top-left anchor; frame `x/y`
+is likewise the top-left corner and width/height extend right and down. Every
+action includes `reveal_at`, a normalized position through its beat narration;
+the server supplies deterministic timing when the model omits or mangles it.
 
 ## Architecture notes
 

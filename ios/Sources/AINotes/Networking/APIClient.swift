@@ -178,10 +178,54 @@ actor APIClient {
         return try decode(try await send(req, session: llmSession))
     }
 
-    // MARK: Chat / Shadow
+    // MARK: Chat / Classroom / Shadow
 
     func chat(projectId: String, question: String) async throws -> ChatResponse {
         try await post("/projects/\(projectId)/chat", body: ["question": question], session: llmSession)
+    }
+
+    func classroomSuggestions(projectId: String) async throws -> [String] {
+        let response: ClassroomSuggestionsResponse = try await get(
+            "/projects/\(projectId)/classroom/suggestions",
+            session: llmSession
+        )
+        return response.suggestions
+    }
+
+    func prepareClassroom(
+        projectId: String,
+        topic: String,
+        promptContext: String? = nil
+    ) async throws -> ClassroomLesson {
+        var body: [String: Any] = ["topic": topic]
+        if let promptContext, !promptContext.isEmpty {
+            body["prompt_context"] = promptContext
+        }
+        return try await post(
+            "/projects/\(projectId)/classroom/prepare",
+            body: body,
+            session: llmSession
+        )
+    }
+
+    func teach(
+        projectId: String,
+        question: String,
+        history: [ClassroomHistoryMessage] = [],
+        promptContext: String? = nil
+    ) async throws -> ChatResponse {
+        var body: [String: Any] = [
+            "question": question,
+            "history": history.map { ["role": $0.role, "content": $0.content] },
+        ]
+        if let promptContext, !promptContext.isEmpty {
+            body["prompt_context"] = promptContext
+        }
+        return try await post(
+            "/projects/\(projectId)/classroom/teach",
+            body: body,
+            session: llmSession
+        )
     }
 
     func shadow(
@@ -239,8 +283,8 @@ actor APIClient {
 
     // MARK: Helpers
 
-    private func get<T: Decodable>(_ path: String) async throws -> T {
-        try decode(try await send(try request(path: path, method: "GET")))
+    private func get<T: Decodable>(_ path: String, session: URLSession? = nil) async throws -> T {
+        try decode(try await send(try request(path: path, method: "GET"), session: session))
     }
 
     private func post<T: Decodable>(_ path: String, body: [String: Any], session: URLSession? = nil) async throws -> T {
