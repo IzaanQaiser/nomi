@@ -16,6 +16,7 @@ private struct CourseMaterialItem: Identifiable, Equatable {
     let id: UUID
     var sourceID: String?
     var title: String
+    var kind: String
     var byteCount: Int?
     var phase: Phase
 
@@ -23,12 +24,14 @@ private struct CourseMaterialItem: Identifiable, Equatable {
         id: UUID = UUID(),
         sourceID: String? = nil,
         title: String,
+        kind: String,
         byteCount: Int? = nil,
         phase: Phase
     ) {
         self.id = id
         self.sourceID = sourceID
         self.title = title
+        self.kind = kind
         self.byteCount = byteCount
         self.phase = phase
     }
@@ -77,18 +80,19 @@ private final class CourseContextModel {
         }
     }
 
-    func addPDFs(_ urls: [URL]) {
-        let pdfs = urls.filter { $0.pathExtension.lowercased() == "pdf" }
-        guard !pdfs.isEmpty else {
-            errorMessage = "Choose one or more PDF files."
+    func addFiles(_ urls: [URL]) {
+        let files = urls.filter { ["pdf", "docx", "png"].contains($0.pathExtension.lowercased()) }
+        guard !files.isEmpty else {
+            errorMessage = "Choose one or more .pdf, .docx, or .png files."
             return
         }
 
         errorMessage = nil
-        for url in pdfs.prefix(12) {
+        for url in files.prefix(12) {
             let values = try? url.resourceValues(forKeys: [.fileSizeKey])
             let item = CourseMaterialItem(
                 title: url.lastPathComponent,
+                kind: url.pathExtension.lowercased(),
                 byteCount: values?.fileSize,
                 phase: .uploading
             )
@@ -124,7 +128,7 @@ private final class CourseContextModel {
     }
 
     func toggleNotebook(_ item: CourseMaterialItem) async {
-        guard item.phase == .ready, let sourceID = item.sourceID else { return }
+        guard item.kind == "pdf", item.phase == .ready, let sourceID = item.sourceID else { return }
         guard notebookSelectionInFlight == nil else { return }
 
         notebookSelectionInFlight = sourceID
@@ -157,7 +161,7 @@ private final class CourseContextModel {
         defer { if scoped { url.stopAccessingSecurityScopedResource() } }
 
         do {
-            let source = try await APIClient.shared.uploadPDF(projectId: project.id, fileURL: url)
+            let source = try await APIClient.shared.uploadSourceFile(projectId: project.id, fileURL: url)
             apply(source: source, to: itemID)
             if source.status == "pending" {
                 await poll(sourceID: source.id, itemID: itemID)
@@ -180,13 +184,14 @@ private final class CourseContextModel {
                 return
             }
         }
-        update(itemID: itemID, phase: .failed("This PDF is taking longer than expected. Try adding it again."))
+        update(itemID: itemID, phase: .failed("This file is taking longer than expected. Try adding it again."))
     }
 
     private func material(from source: Source) -> CourseMaterialItem {
         CourseMaterialItem(
             sourceID: source.id,
             title: source.title,
+            kind: source.kind,
             phase: phase(for: source)
         )
     }
@@ -195,13 +200,14 @@ private final class CourseContextModel {
         guard let index = materials.firstIndex(where: { $0.id == itemID }) else { return }
         materials[index].sourceID = source.id
         materials[index].title = source.title
+        materials[index].kind = source.kind
         materials[index].phase = phase(for: source)
     }
 
     private func phase(for source: Source) -> CourseMaterialItem.Phase {
         switch source.status {
         case "ready": .ready
-        case "error": .failed(source.error ?? "Nomi couldn't read this PDF.")
+        case "error": .failed(source.error ?? "Nomi couldn't read this file.")
         default: .uploading
         }
     }
@@ -256,11 +262,11 @@ struct CourseContextView: View {
         .preferredColorScheme(.light)
         .fileImporter(
             isPresented: $showImporter,
-            allowedContentTypes: [.pdf],
+            allowedContentTypes: [.pdf, .png, UTType(filenameExtension: "docx")!],
             allowsMultipleSelection: true
         ) { result in
             switch result {
-            case let .success(urls): model.addPDFs(urls)
+            case let .success(urls): model.addFiles(urls)
             case let .failure(error):
                 if (error as NSError).code != NSUserCancelledError {
                     model.errorMessage = error.localizedDescription
@@ -278,7 +284,7 @@ struct CourseContextView: View {
         VStack(spacing: compact ? 8 : 12) {
             VStack(spacing: compact ? 5 : 7) {
                 NomiView(pose: NomiPose(assetName: mascotAsset))
-                    .frame(width: compact ? 62 : 86, height: compact ? 62 : 86)
+                    .frame(width: compact ? 96 : 150, height: compact ? 96 : 150)
                     .id(mascotAsset)
                     .transition(.opacity)
                     .accessibilityHidden(true)
@@ -299,7 +305,7 @@ struct CourseContextView: View {
                 .multilineTextAlignment(.center)
                 .accessibilityAddTraits(.isHeader)
 
-            Text("Add the PDFs that shape this course—slides, readings, assignments, or past exams.")
+            Text("Add the files that shape this course—slides, readings, assignments, or past exams.")
                 .font(.system(size: compact ? 15 : 17))
                 .foregroundStyle(NomiTheme.secondaryInk)
                 .multilineTextAlignment(.center)
@@ -321,10 +327,10 @@ struct CourseContextView: View {
                         .background(NomiTheme.blue.opacity(0.09), in: Circle())
 
                     VStack(spacing: 3) {
-                        Text("Add course PDFs")
+                        Text("Add course files")
                             .font(.headline)
                             .foregroundStyle(NomiTheme.ink)
-                        Text("Choose one or several files")
+                        Text("Select multiple files at once")
                             .font(.subheadline)
                             .foregroundStyle(NomiTheme.secondaryInk)
                     }
@@ -343,9 +349,9 @@ struct CourseContextView: View {
             }
             .buttonStyle(.plain)
             .dropDestination(for: URL.self) { urls, _ in
-                let pdfs = urls.filter { $0.pathExtension.lowercased() == "pdf" }
-                model.addPDFs(pdfs)
-                return !pdfs.isEmpty
+                let files = urls.filter { ["pdf", "docx", "png"].contains($0.pathExtension.lowercased()) }
+                model.addFiles(files)
+                return !files.isEmpty
             }
             .transition(.opacity)
         } else {
@@ -380,7 +386,7 @@ struct CourseContextView: View {
                 Divider()
 
                 Button { showImporter = true } label: {
-                    Label("Add more PDFs", systemImage: "plus")
+                    Label("Add more files", systemImage: "plus")
                         .font(.subheadline.weight(.semibold))
                         .foregroundStyle(NomiTheme.blue)
                         .frame(maxWidth: .infinity, alignment: .leading)
@@ -399,6 +405,11 @@ struct CourseContextView: View {
             .animation(.easeInOut(duration: 0.22), value: model.materials)
             .transition(.opacity)
         }
+
+        Text("Supported files: .pdf, .docx, and .png.")
+            .font(.caption)
+            .foregroundStyle(NomiTheme.secondaryInk)
+            .frame(maxWidth: .infinity, alignment: .leading)
 
         if let error = model.errorMessage {
             Label(error, systemImage: "exclamationmark.circle.fill")
@@ -479,11 +490,14 @@ private struct MaterialRow: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            Image(systemName: "doc.fill")
+            Image(systemName: item.kind == "png" ? "photo.fill" : "doc.fill")
                 .font(.system(size: 16, weight: .semibold))
-                .foregroundStyle(Color.red.opacity(0.82))
+                .foregroundStyle(item.kind == "pdf" ? Color.red.opacity(0.82) : NomiTheme.blue)
                 .frame(width: 36, height: 36)
-                .background(Color.red.opacity(0.09), in: RoundedRectangle(cornerRadius: 10))
+                .background(
+                    item.kind == "pdf" ? Color.red.opacity(0.09) : NomiTheme.blue.opacity(0.09),
+                    in: RoundedRectangle(cornerRadius: 10)
+                )
 
             VStack(alignment: .leading, spacing: 3) {
                 Text(item.title)
@@ -504,7 +518,7 @@ private struct MaterialRow: View {
 
             Spacer(minLength: 8)
 
-            if item.phase == .ready {
+            if item.phase == .ready && item.kind == "pdf" {
                 Button(action: onToggleNotebook) {
                     HStack(spacing: 6) {
                         if isChangingNotebook {

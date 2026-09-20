@@ -27,17 +27,35 @@ final class SourcesViewModel {
         } catch { errorMessage = error.localizedDescription }
     }
 
-    func addPDF(url: URL) async {
+    func addFiles(_ urls: [URL]) async {
+        let supported = urls.filter { ["pdf", "docx", "png"].contains($0.pathExtension.lowercased()) }
+        guard !supported.isEmpty else {
+            errorMessage = "Choose .pdf, .docx, or .png files."
+            return
+        }
         isBusy = true
         defer { isBusy = false }
-        // Security-scoped access is required for files from the document picker.
-        let scoped = url.startAccessingSecurityScopedResource()
-        defer { if scoped { url.stopAccessingSecurityScopedResource() } }
-        do {
-            let s = try await APIClient.shared.uploadPDF(projectId: project.id, fileURL: url)
-            sources.insert(s, at: 0)
-            await pollUntilReady(id: s.id)
-        } catch { errorMessage = error.localizedDescription }
+        errorMessage = nil
+        var failures: [String] = []
+
+        for url in supported.prefix(12) {
+            // Each document-picker URL has its own security-scoped lifetime.
+            let scoped = url.startAccessingSecurityScopedResource()
+            do {
+                let source = try await APIClient.shared.uploadSourceFile(
+                    projectId: project.id,
+                    fileURL: url
+                )
+                sources.removeAll { $0.id == source.id }
+                sources.insert(source, at: 0)
+                if source.status == "pending" { await pollUntilReady(id: source.id) }
+            } catch {
+                failures.append("\(url.lastPathComponent): \(error.localizedDescription)")
+            }
+            if scoped { url.stopAccessingSecurityScopedResource() }
+        }
+
+        if !failures.isEmpty { errorMessage = failures.joined(separator: "\n") }
     }
 
     func delete(_ source: Source) async {
@@ -69,7 +87,7 @@ final class SourcesViewModel {
 struct SourcesView: View {
     @State private var model: SourcesViewModel
     @State private var showTextEntry = false
-    @State private var showPDFImporter = false
+    @State private var showFileImporter = false
     @State private var draftTitle = ""
     @State private var draftContent = ""
     @Environment(\.dismiss) private var dismiss
@@ -85,12 +103,12 @@ struct SourcesView: View {
                     draftTitle = ""; draftContent = ""; showTextEntry = true
                 } label: { Label("Paste text", systemImage: "text.alignleft") }
                 Button {
-                    showPDFImporter = true
-                } label: { Label("Upload PDF", systemImage: "doc.badge.plus") }
+                    showFileImporter = true
+                } label: { Label("Add files", systemImage: "doc.badge.plus") }
             } header: {
                 Text("Add source")
             } footer: {
-                Text("Sources are private to this notebook. The assistant only answers from them.")
+                Text("Supported files: .pdf, .docx, and .png. Select multiple files at once. Sources are private to this project and ground Nomi’s answers.")
             }
 
             Section("Sources") {
@@ -99,7 +117,7 @@ struct SourcesView: View {
                 }
                 ForEach(model.sources) { source in
                     HStack {
-                        Image(systemName: source.kind == "pdf" ? "doc.fill" : "text.alignleft")
+                        Image(systemName: sourceIcon(for: source.kind))
                             .foregroundStyle(.tint)
                         VStack(alignment: .leading) {
                             Text(source.title).lineLimit(1)
@@ -159,18 +177,35 @@ struct SourcesView: View {
             }
         }
         .fileImporter(
-            isPresented: $showPDFImporter,
-            allowedContentTypes: [.pdf],
-            allowsMultipleSelection: false
+            isPresented: $showFileImporter,
+            allowedContentTypes: supportedSourceTypes,
+            allowsMultipleSelection: true
         ) { result in
-            if case let .success(urls) = result, let url = urls.first {
-                Task { await model.addPDF(url: url) }
+            switch result {
+            case let .success(urls):
+                Task { await model.addFiles(urls) }
+            case let .failure(error):
+                if (error as NSError).code != NSUserCancelledError {
+                    model.errorMessage = error.localizedDescription
+                }
             }
         }
         .alert("Error", isPresented: .constant(model.errorMessage != nil)) {
             Button("OK") { model.errorMessage = nil }
         } message: {
             Text(model.errorMessage ?? "")
+        }
+    }
+
+    private var supportedSourceTypes: [UTType] {
+        [.pdf, .png, UTType(filenameExtension: "docx")!]
+    }
+
+    private func sourceIcon(for kind: String) -> String {
+        switch kind {
+        case "png": "photo.fill"
+        case "pdf", "docx": "doc.fill"
+        default: "text.alignleft"
         }
     }
 }

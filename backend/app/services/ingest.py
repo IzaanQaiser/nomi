@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import base64
 import re
 from io import BytesIO
+from xml.etree import ElementTree
+from zipfile import BadZipFile, ZipFile
 
 from sqlalchemy.orm import Session
 
@@ -20,6 +23,48 @@ def extract_pdf_text(document: str | bytes) -> str:
     reader = PdfReader(BytesIO(document) if isinstance(document, bytes) else document)
     parts = [(page.extract_text() or "") for page in reader.pages]
     return "\n\n".join(parts)
+
+
+def extract_docx_text(document: bytes) -> str:
+    """Extract paragraph text from a Word document without executing macros."""
+    try:
+        with ZipFile(BytesIO(document)) as archive:
+            if archive.getinfo("word/document.xml").file_size > 10 * 1024 * 1024:
+                raise ValueError("DOCX document text is too large")
+            xml = archive.read("word/document.xml")
+    except (BadZipFile, KeyError) as exc:
+        raise ValueError("Invalid DOCX document") from exc
+
+    root = ElementTree.fromstring(xml)
+    namespace = {"w": "http://schemas.openxmlformats.org/wordprocessingml/2006/main"}
+    paragraphs: list[str] = []
+    for paragraph in root.findall(".//w:p", namespace):
+        text = "".join(node.text or "" for node in paragraph.findall(".//w:t", namespace))
+        if text.strip():
+            paragraphs.append(text.strip())
+    return "\n\n".join(paragraphs)
+
+
+def extract_png_text(document: bytes) -> str:
+    """Use the configured vision provider as OCR for an uploaded PNG."""
+    if not document.startswith(b"\x89PNG\r\n\x1a\n"):
+        raise ValueError("Invalid PNG image")
+    return get_provider().vision(
+        "You are a precise OCR system. Return only the legible text in reading order.",
+        "Transcribe every legible word, equation, heading, and label in this image. "
+        "Do not summarize or add commentary.",
+        base64.b64encode(document).decode("ascii"),
+    ).strip()
+
+
+def extract_source_text(kind: str, document: bytes) -> str:
+    if kind == "pdf":
+        return extract_pdf_text(document)
+    if kind == "docx":
+        return extract_docx_text(document)
+    if kind == "png":
+        return extract_png_text(document)
+    raise ValueError(f"Unsupported source kind: {kind}")
 
 
 def _normalize(text: str) -> str:

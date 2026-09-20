@@ -434,47 +434,36 @@ struct ProjectDetailView: View {
             if model.isLoading && model.sources.isEmpty {
                 ProgressView("Loading context…")
                     .frame(maxWidth: .infinity, minHeight: 118)
-            } else if model.sources.isEmpty {
-                Button { showSources = true } label: {
-                    VStack(spacing: 9) {
-                        Image(systemName: "doc.badge.plus")
-                            .font(.title2)
-                        Text("Add your first source")
-                            .font(.subheadline.weight(.semibold))
-                    }
-                    .foregroundStyle(NomiTheme.blue)
-                    .frame(maxWidth: .infinity, minHeight: 118)
-                    .background(NomiTheme.blue.opacity(0.055), in: RoundedRectangle(cornerRadius: 15))
-                    .overlay {
-                        RoundedRectangle(cornerRadius: 15)
-                            .stroke(NomiTheme.blue.opacity(0.28), style: StrokeStyle(lineWidth: 1, dash: [6]))
-                    }
-                }
-                .buttonStyle(.plain)
             } else {
-                ScrollView(.horizontal, showsIndicators: false) {
-                    LazyHStack(spacing: 10) {
-                        ForEach(model.sources.prefix(4)) { source in
-                            SourcePreviewCard(source: source)
-                        }
-
-                        Button { showSources = true } label: {
-                            VStack(spacing: 8) {
-                                Image(systemName: "plus")
-                                    .font(.title2.weight(.medium))
-                                Text("Add Source")
-                                    .font(.caption.weight(.semibold))
-                            }
-                            .foregroundStyle(NomiTheme.blue)
-                            .frame(width: 116, height: 126)
-                            .background(NomiTheme.blue.opacity(0.045), in: RoundedRectangle(cornerRadius: 15))
-                            .overlay {
-                                RoundedRectangle(cornerRadius: 15)
-                                    .stroke(NomiTheme.blue.opacity(0.25), style: StrokeStyle(lineWidth: 1, dash: [5]))
+                VStack(spacing: 12) {
+                    if model.sources.isEmpty {
+                        Text("No sources yet. Add the first thing Nomi should know.")
+                            .font(.subheadline)
+                            .foregroundStyle(NomiTheme.secondaryInk)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.vertical, 6)
+                    } else {
+                        ScrollView(.vertical, showsIndicators: model.sources.count > 3) {
+                            LazyVStack(spacing: 12) {
+                                ForEach(model.sources) { source in
+                                    ContextSourceRow(source: source)
+                                }
                             }
                         }
-                        .buttonStyle(.plain)
+                        .frame(height: contextSourceListHeight)
+                        .scrollBounceBehavior(.basedOnSize)
                     }
+
+                    Button { showSources = true } label: {
+                        Image(systemName: "plus")
+                            .font(.title2.weight(.medium))
+                            .foregroundStyle(.white)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 48)
+                            .background(NomiTheme.blue, in: RoundedRectangle(cornerRadius: 13, style: .continuous))
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Add source")
                 }
             }
         }
@@ -484,6 +473,13 @@ struct ProjectDetailView: View {
             RoundedRectangle(cornerRadius: 20, style: .continuous)
                 .stroke(NomiTheme.hairline, lineWidth: 1)
         }
+    }
+
+    private var contextSourceListHeight: CGFloat {
+        let visibleRows = min(model.sources.count, 3)
+        let rowHeight = CGFloat(visibleRows) * 52
+        let spacing = CGFloat(max(0, visibleRows - 1)) * 12
+        return rowHeight + spacing
     }
 
     private var examPrepCard: some View {
@@ -657,36 +653,63 @@ struct ProjectDetailView: View {
     }
 }
 
-private struct SourcePreviewCard: View {
+private struct ContextSourceRow: View {
     let source: Source
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 9) {
+        HStack(spacing: 13) {
             ZStack {
-                RoundedRectangle(cornerRadius: 11, style: .continuous)
-                    .fill(source.kind == "pdf" ? Color.red.opacity(0.09) : NomiTheme.blue.opacity(0.09))
-                Image(systemName: source.kind == "pdf" ? "doc.fill" : "text.alignleft")
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .fill(iconColor.opacity(0.09))
+                Image(systemName: iconName)
                     .font(.title2)
-                    .foregroundStyle(source.kind == "pdf" ? Color.red : NomiTheme.blue)
+                    .foregroundStyle(iconColor)
             }
-            .frame(width: 42, height: 42)
+            .frame(width: 52, height: 52)
 
-            Text(source.title)
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(NomiTheme.ink)
-                .lineLimit(2)
+            VStack(alignment: .leading, spacing: 4) {
+                Text(source.title)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(NomiTheme.ink)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
 
-            Text(source.status == "ready" ? "Ready" : "Processing")
-                .font(.caption2)
-                .foregroundStyle(source.status == "ready" ? Color.green : NomiTheme.secondaryInk)
+                Text(detailText)
+                    .font(.caption)
+                    .foregroundStyle(detailColor)
+            }
+
+            Spacer(minLength: 0)
         }
-        .frame(width: 116, height: 126, alignment: .topLeading)
-        .padding(12)
-        .background(NomiTheme.paper, in: RoundedRectangle(cornerRadius: 15, style: .continuous))
-        .overlay {
-            RoundedRectangle(cornerRadius: 15, style: .continuous)
-                .stroke(NomiTheme.hairline, lineWidth: 1)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityElement(children: .combine)
+    }
+
+    private var iconName: String {
+        switch source.kind {
+        case "png": "photo.fill"
+        case "pdf", "docx": "doc.fill"
+        default: "text.alignleft"
         }
+    }
+
+    private var iconColor: Color {
+        source.kind == "pdf" ? .red : NomiTheme.blue
+    }
+
+    private var detailText: String {
+        switch source.status {
+        case "ready":
+            return "Added \(source.createdAt.formatted(.relative(presentation: .named)))"
+        case "error":
+            return "Needs attention"
+        default:
+            return "Processing…"
+        }
+    }
+
+    private var detailColor: Color {
+        source.status == "error" ? .red : NomiTheme.secondaryInk
     }
 }
 

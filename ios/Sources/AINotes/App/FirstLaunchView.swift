@@ -93,18 +93,18 @@ struct FirstLaunchView: View {
                         RadialGradient(
                             colors: [NomiTheme.blue.opacity(0.13), NomiTheme.blue.opacity(0)],
                             center: .center,
-                            startRadius: compact ? 18 : 32,
-                            endRadius: compact ? 50 : 90
+                            startRadius: compact ? 28 : 52,
+                            endRadius: compact ? 78 : 138
                         )
                     )
-                    .frame(width: compact ? 100 : 180, height: compact ? 100 : 180)
+                    .frame(width: compact ? 156 : 276, height: compact ? 156 : 276)
 
                 NomiView(pose: NomiPose(assetName: mascotAsset))
-                    .frame(width: compact ? 52 : 84, height: compact ? 52 : 84)
+                    .frame(width: compact ? 94 : 150, height: compact ? 94 : 150)
                     .id(mascotAsset)
                     .transition(.opacity)
             }
-            .frame(width: compact ? 110 : 190, height: compact ? 62 : 132)
+            .frame(width: compact ? 166 : 286, height: compact ? 104 : 200)
             .animation(.easeInOut(duration: 0.22), value: mascotAsset)
             .accessibilityHidden(true)
 

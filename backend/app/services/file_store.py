@@ -23,14 +23,16 @@ def _supabase() -> Client:
     return create_client(settings.supabase_url, settings.supabase_service_role_key)
 
 
-def save_pdf(project_id: str, filename: str, content: bytes) -> str:
+def save_source_file(
+    project_id: str, filename: str, content: bytes, content_type: str
+) -> str:
     settings = get_settings()
     object_path = f"{project_id}/{uuid.uuid4().hex}_{_safe_filename(filename)}"
     if settings.uses_supabase_storage:
         _supabase().storage.from_(settings.supabase_storage_bucket).upload(
             path=object_path,
             file=content,
-            file_options={"content-type": "application/pdf", "upsert": "false"},
+            file_options={"content-type": content_type, "upsert": "false"},
         )
         return object_path
 
@@ -38,6 +40,11 @@ def save_pdf(project_id: str, filename: str, content: bytes) -> str:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_bytes(content)
     return str(path)
+
+
+def save_pdf(project_id: str, filename: str, content: bytes) -> str:
+    """Backward-compatible wrapper for older callers."""
+    return save_source_file(project_id, filename, content, "application/pdf")
 
 
 def read_file(storage_path: str) -> bytes:
