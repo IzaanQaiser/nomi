@@ -99,10 +99,7 @@ struct FirstLaunchView: View {
                     )
                     .frame(width: compact ? 100 : 180, height: compact ? 100 : 180)
 
-                Image(mascotAsset)
-                    .resizable()
-                    .interpolation(.high)
-                    .scaledToFit()
+                NomiView(pose: NomiPose(assetName: mascotAsset))
                     .frame(width: compact ? 52 : 84, height: compact ? 52 : 84)
                     .id(mascotAsset)
                     .transition(.opacity)

@@ -277,10 +277,7 @@ struct CourseContextView: View {
     private func hero(compact: Bool) -> some View {
         VStack(spacing: compact ? 8 : 12) {
             VStack(spacing: compact ? 5 : 7) {
-                Image(mascotAsset)
-                    .resizable()
-                    .interpolation(.high)
-                    .scaledToFit()
+                NomiView(pose: NomiPose(assetName: mascotAsset))
                     .frame(width: compact ? 62 : 86, height: compact ? 62 : 86)
                     .id(mascotAsset)
                     .transition(.opacity)

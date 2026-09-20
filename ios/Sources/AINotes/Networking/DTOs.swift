@@ -121,3 +121,51 @@ struct SolutionResponse: Codable, Hashable {
     let problem: String?
     let grounding: String?
 }
+
+// MARK: - Exam prep
+
+struct GeneratedExam: Codable, Equatable {
+    let title: String
+    let durationMinutes: Int
+    let totalMarks: Int
+    let instructions: String?
+    let sections: [ExamSection]
+
+    enum CodingKeys: String, CodingKey {
+        case title, instructions, sections
+        case durationMinutes = "duration_minutes"
+        case totalMarks = "total_marks"
+    }
+}
+
+struct ExamSection: Codable, Equatable {
+    let title: String
+    let instructions: String?
+    let questions: [ExamQuestion]
+}
+
+struct ExamQuestion: Codable, Equatable {
+    let number: String
+    let prompt: String
+    let marks: Int
+    let answerLines: Int
+
+    enum CodingKeys: String, CodingKey {
+        case number, prompt, marks
+        case answerLines = "answer_lines"
+    }
+}
+
+struct ExamGrade: Codable, Equatable {
+    let awarded: Int
+    let total: Int
+    let summary: String
+    let questions: [GradedQuestion]
+}
+
+struct GradedQuestion: Codable, Equatable {
+    let number: String
+    let awarded: Int
+    let marks: Int
+    let feedback: String
+}

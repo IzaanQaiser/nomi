@@ -29,14 +29,19 @@ struct MascotView: View {
 
             Button(action: engine.toggle) {
                 HStack(alignment: .center, spacing: 6) {
-                    Image(poseName)
-                        .resizable()
-                        .interpolation(.high)
-                        .scaledToFit()
-                        .frame(width: nomiSize, height: nomiSize)
-                        .shadow(color: .black.opacity(0.16), radius: 6, y: 2)
-                        .id(poseName)
-                        .transition(.opacity)
+                    ZStack {
+                        // Keying by pose cross-dissolves the expression while the
+                        // (identical) blue body stays put, so an emotion change
+                        // reads as Nomi morphing rather than a hard image swap.
+                        NomiView(pose: pose)
+                            .frame(width: nomiSize, height: nomiSize)
+                            .shadow(color: .black.opacity(0.16), radius: 6, y: 2)
+                            .id(pose)
+                            .transition(.asymmetric(
+                                insertion: .opacity.combined(with: .scale(scale: 0.9, anchor: .bottom)),
+                                removal: .opacity
+                            ))
+                    }
 
                     if isListening {
                         AudioLevelBars()
@@ -44,7 +49,7 @@ struct MascotView: View {
                             .transition(.opacity.combined(with: .scale(scale: 0.6)))
                     }
                 }
-                .animation(.easeInOut(duration: 0.2), value: poseName)
+                .animation(.spring(response: 0.4, dampingFraction: 0.75), value: pose)
                 .animation(.easeInOut(duration: 0.18), value: isListening)
             }
             .buttonStyle(.plain)
@@ -55,15 +60,16 @@ struct MascotView: View {
 
     private var isListening: Bool { if case .listening = engine.state { return true } else { return false } }
 
-    private var poseName: String {
+    /// Maps the live tutor state onto a pose for the vector Nomi rig.
+    private var pose: NomiPose {
         switch engine.state {
-        case .off: return "NomiSleep"
-        case .idle: return "NomiIdle"
-        case .thinking: return "NomiThinking"
-        case .onTrack: return "NomiConfirm"
-        case .hint: return "NomiNudge"
-        case .listening: return "NomiIdle"
-        case .reply: return "NomiTalk"
+        case .off: return .sleep
+        case .idle: return .idle
+        case .thinking: return .thinking
+        case .onTrack: return .confirm
+        case .hint: return .nudge
+        case .listening: return .listening
+        case .reply: return .talk
         }
     }
 
@@ -89,6 +95,21 @@ struct MascotView: View {
         case .hint: return .orange
         case .listening: return .red
         case .reply: return .blue
+        }
+    }
+}
+
+extension NomiPose {
+    /// Bridges the old PNG asset names to a live pose so every screen that used
+    /// `Image("NomiX")` can drop in a `NomiView` instead.
+    init(assetName: String) {
+        switch assetName {
+        case "NomiSleep":    self = .sleep
+        case "NomiThinking": self = .thinking
+        case "NomiConfirm":  self = .confirm
+        case "NomiNudge":    self = .nudge
+        case "NomiTalk":     self = .talk
+        default:             self = .idle   // NomiIdle
         }
     }
 }

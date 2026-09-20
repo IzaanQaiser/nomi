@@ -141,6 +141,32 @@ actor APIClient {
         return try decode(try await send(req))
     }
 
+    // MARK: Exam prep
+
+    /// Ask the backend to draft a likely exam from the project's sources. Slow
+    /// (an LLM pass), so it runs on the long-timeout session.
+    func generateExam(projectId: String) async throws -> GeneratedExam {
+        var req = try request(path: "/projects/\(projectId)/exam/generate", method: "POST")
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.httpBody = Data("{}".utf8)
+        return try decode(try await send(req, session: llmSession))
+    }
+
+    func gradeExam(projectId: String, exam: GeneratedExam, pageImagesBase64: [String]) async throws -> ExamGrade {
+        struct Body: Encodable {
+            let exam: GeneratedExam
+            let pageImagesBase64: [String]
+            enum CodingKeys: String, CodingKey {
+                case exam
+                case pageImagesBase64 = "page_images_base64"
+            }
+        }
+        var req = try request(path: "/projects/\(projectId)/exam/grade", method: "POST")
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.httpBody = try JSONEncoder().encode(Body(exam: exam, pageImagesBase64: pageImagesBase64))
+        return try decode(try await send(req, session: llmSession))
+    }
+
     // MARK: Chat / Shadow
 
     func chat(projectId: String, question: String) async throws -> ChatResponse {

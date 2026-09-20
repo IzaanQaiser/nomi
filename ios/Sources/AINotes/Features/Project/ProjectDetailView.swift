@@ -121,6 +121,25 @@ private final class ProjectDetailModel {
         ProjectNotebookStore.save(notebooks, projectID: project.id)
     }
 
+    /// Generate an exam from the project's sources, render it to a PDF, and add
+    /// it as a new (exam) notebook whose background is that PDF.
+    func generateExamNotebook() async throws -> ProjectNotebook {
+        let exam = try await APIClient.shared.generateExam(projectId: project.id)
+        let pdf = ExamPDFRenderer.makePDF(from: exam)
+        let notebook = ProjectNotebook(
+            id: UUID().uuidString.lowercased(),
+            title: exam.title,
+            createdAt: .now,
+            pageSources: nil
+        )
+        let storageID = notebook.storageID(projectID: project.id)
+        try PDFNoteStore.importPDFs([(exam.title, pdf)], storageID: storageID)
+        ExamStore.save(exam, storageID: storageID)
+        notebooks.append(notebook)
+        ProjectNotebookStore.save(notebooks, projectID: project.id)
+        return notebook
+    }
+
     func renameProject(to name: String) async -> Project? {
         isRenaming = true
         defer { isRenaming = false }
@@ -156,6 +175,8 @@ struct ProjectDetailView: View {
     @State private var showDeleteConfirmation = false
     @State private var projectName = ""
     @State private var isDeleting = false
+    @State private var isGeneratingExam = false
+    @State private var examNotebook: ProjectNotebook?
 
     init(
         project: Project,
@@ -185,6 +206,12 @@ struct ProjectDetailView: View {
         .background(NomiTheme.paper.ignoresSafeArea())
         .preferredColorScheme(.light)
         .toolbar(.hidden, for: .navigationBar)
+        .navigationDestination(item: $examNotebook) { notebook in
+            ProjectShellView(project: model.project, notebook: notebook)
+        }
+        .fullScreenCover(isPresented: $isGeneratingExam) {
+            ExamLoadingView()
+        }
         .task {
             await model.load()
             onProjectUpdated(model.project)
@@ -273,7 +300,7 @@ struct ProjectDetailView: View {
             ScrollView {
                 VStack(spacing: 18) {
                     contextCard
-                    nomiCard
+                    examPrepCard
                 }
                 .padding(.horizontal, 20)
                 .padding(.bottom, 24)
@@ -387,29 +414,56 @@ struct ProjectDetailView: View {
         }
     }
 
-    private var nomiCard: some View {
-        HStack(spacing: 15) {
-            Image("NomiIdle")
-                .resizable()
-                .interpolation(.high)
-                .scaledToFit()
-                .frame(width: 58, height: 58)
-                .accessibilityHidden(true)
+    private var examPrepCard: some View {
+        Button {
+            startExamPrep()
+        } label: {
+            HStack(spacing: 15) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .fill(NomiTheme.blue.opacity(0.14))
+                        .frame(width: 58, height: 58)
+                    Image(systemName: "graduationcap.fill")
+                        .font(.system(size: 24, weight: .semibold))
+                        .foregroundStyle(NomiTheme.blue)
+                }
 
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Ready when you are.")
-                    .font(.headline)
-                    .foregroundStyle(NomiTheme.ink)
-                Text("Open a notebook and I’ll stay with the work.")
-                    .font(.subheadline)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Exam Prep")
+                        .font(.headline)
+                        .foregroundStyle(NomiTheme.ink)
+                    Text("I’ll build a likely exam from your notes, past exams and assignments — then grade it when time’s up.")
+                        .font(.subheadline)
+                        .foregroundStyle(NomiTheme.secondaryInk)
+                        .multilineTextAlignment(.leading)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                Spacer(minLength: 0)
+                Image(systemName: "chevron.right")
+                    .font(.subheadline.weight(.semibold))
                     .foregroundStyle(NomiTheme.secondaryInk)
-                    .fixedSize(horizontal: false, vertical: true)
             }
-
-            Spacer(minLength: 0)
+            .padding(18)
+            .background(NomiTheme.blue.opacity(0.065), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
         }
-        .padding(18)
-        .background(NomiTheme.blue.opacity(0.065), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .buttonStyle(.plain)
+        .disabled(model.isLoading)
+    }
+
+    private func startExamPrep() {
+        guard !isGeneratingExam else { return }
+        isGeneratingExam = true
+        Task {
+            do {
+                let notebook = try await model.generateExamNotebook()
+                isGeneratingExam = false
+                examNotebook = notebook
+            } catch {
+                isGeneratingExam = false
+                model.errorMessage = error.localizedDescription
+            }
+        }
     }
 
     private var notebooksPanel: some View {
@@ -633,10 +687,7 @@ private struct NewNotebookSheet: View {
             Form {
                 Section {
                     HStack(spacing: 14) {
-                        Image("NomiIdle")
-                            .resizable()
-                            .interpolation(.high)
-                            .scaledToFit()
+                        NomiView(pose: .idle)
                             .frame(width: 58, height: 58)
                             .accessibilityHidden(true)
 
@@ -801,10 +852,7 @@ private struct ProjectSettingsMenu: View {
             List {
                 Section {
                     HStack(spacing: 13) {
-                        Image("NomiIdle")
-                            .resizable()
-                            .interpolation(.high)
-                            .scaledToFit()
+                        NomiView(pose: .idle)
                             .frame(width: 52, height: 52)
                             .accessibilityHidden(true)
 

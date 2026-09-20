@@ -56,9 +56,7 @@ struct OnboardingFlowView: View {
 
     private func restoreFailure(message: String) -> some View {
         VStack(spacing: 18) {
-            Image("NomiNudge")
-                .resizable()
-                .scaledToFit()
+            NomiView(pose: .nudge)
                 .frame(width: 76, height: 76)
 
             Text("I couldn't reopen that course.")

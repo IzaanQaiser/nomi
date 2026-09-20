@@ -296,10 +296,7 @@ struct ProjectsView: View {
             let mascotSize = min(320, max(240, min(proxy.size.width, proxy.size.height) * 0.40))
 
             VStack(spacing: 26) {
-                Image("NomiIdle")
-                    .resizable()
-                    .interpolation(.high)
-                    .scaledToFit()
+                NomiView(pose: .idle)
                     .frame(width: mascotSize, height: mascotSize)
                     .accessibilityHidden(true)
 
