@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import math
 import re
 
@@ -52,6 +53,69 @@ class MockProvider(LLMProvider):
                 "Try adding a source that covers this topic."
             )
         snippet = context[:400].replace("\n", " ")
+        if "exactly three short topic names" in system:
+            return '["control theory", "compensators", "lead/lag plots"]'
+        if "Prepare a classroom lesson plan" in system:
+            topic = ""
+            if "Topic:" in user:
+                topic = user.split("Topic:", 1)[1].split("\n", 1)[0].strip()
+            tokens = [tok for tok in _tokens(topic) if len(tok) > 3]
+            covered = not tokens or any(tok in context.lower() for tok in tokens)
+            if not covered:
+                return json.dumps(
+                    {
+                        "in_scope": False,
+                        "topic": topic,
+                        "title": "",
+                        "reason": "That topic is not in the course sources.",
+                        "summary": "",
+                        "beats": [],
+                    }
+                )
+            title = topic or "Course topic"
+            return json.dumps(
+                {
+                    "in_scope": True,
+                    "topic": title,
+                    "title": title,
+                    "reason": None,
+                    "summary": "A grounded lesson from the course notes.",
+                    "beats": [
+                        {
+                            "title": "The idea",
+                            "speaking": "Start with the core definition from the notes.",
+                            "board": {"kind": "none", "instruction": ""},
+                        },
+                        {
+                            "title": "How it works",
+                            "speaking": "Walk through the method used in the sources.",
+                            "board": {
+                                "kind": "diagram",
+                                "instruction": "Sketch the main relationship.",
+                            },
+                        },
+                        {
+                            "title": "A concrete case",
+                            "speaking": "Apply it to one example from the notes.",
+                            "board": {
+                                "kind": "equation",
+                                "instruction": "Write the key relation.",
+                            },
+                        },
+                        {
+                            "title": "Check",
+                            "speaking": "Ask the student to restate the idea in one sentence.",
+                            "board": {"kind": "none", "instruction": ""},
+                        },
+                    ],
+                }
+            )
+        if "teaching inside a student's project classroom" in system:
+            return (
+                "Here's the idea in plain language.\n\n"
+                f"{snippet}\n\n"
+                "Check: can you explain this back in one sentence?"
+            )
         return f"[mock answer grounded in your sources] Based on your notes: {snippet}"
 
     def vision(

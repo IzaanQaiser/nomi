@@ -86,6 +86,9 @@ configured:
 - `GET /projects/{id}/sources`, `POST .../sources/text`, `POST .../sources/pdf`
 - `GET/PUT /projects/{id}/notes`
 - `POST /projects/{id}/chat` -> grounded answer + citations
+- `GET /projects/{id}/classroom/suggestions` -> three course-grounded topic names
+- `POST /projects/{id}/classroom/prepare` -> in-scope lesson plan (beats, sources, passages)
+- `POST /projects/{id}/classroom/teach` -> a sourced lesson, with optional history
 - `POST /projects/{id}/shadow` -> live tutor analysis (image + context)
 
 ## Architecture notes

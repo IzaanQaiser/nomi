@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -68,6 +69,66 @@ class ChatRequest(BaseModel):
 class ChatResponse(BaseModel):
     answer: str
     citations: list[Citation]
+
+
+class ClassroomHistoryMessage(BaseModel):
+    role: Literal["user", "assistant"]
+    content: str = Field(min_length=1, max_length=4000)
+
+
+class ClassroomRequest(BaseModel):
+    question: str = Field(min_length=1, max_length=2000)
+    history: list[ClassroomHistoryMessage] = []
+    # Optional handoff from live tutoring later (stuck problem, page notes, etc.).
+    prompt_context: str | None = Field(default=None, max_length=4000)
+
+
+class ClassroomSuggestionsResponse(BaseModel):
+    suggestions: list[str]
+
+
+class ClassroomPrepareRequest(BaseModel):
+    topic: str = Field(min_length=1, max_length=2000)
+    prompt_context: str | None = Field(default=None, max_length=4000)
+
+
+class ClassroomBoardCue(BaseModel):
+    kind: Literal["diagram", "equation", "list", "none"] = "none"
+    instruction: str = ""
+
+
+class ClassroomLessonBeat(BaseModel):
+    index: int
+    title: str
+    speaking: str
+    board: ClassroomBoardCue = ClassroomBoardCue()
+
+
+class ClassroomLessonSource(BaseModel):
+    source_id: str
+    source_title: str
+    kind: str = "text"
+
+
+class ClassroomPassage(BaseModel):
+    source_id: str
+    source_title: str
+    chunk_id: str
+    content: str
+    score: float
+
+
+class ClassroomLessonOut(BaseModel):
+    in_scope: bool
+    topic: str
+    title: str = ""
+    reason: str | None = None
+    summary: str = ""
+    beats: list[ClassroomLessonBeat] = []
+    sources: list[ClassroomLessonSource] = []
+    citations: list[Citation] = []
+    passages: list[ClassroomPassage] = []
+    grounding: str = "empty"
 
 
 class ShadowRequest(BaseModel):

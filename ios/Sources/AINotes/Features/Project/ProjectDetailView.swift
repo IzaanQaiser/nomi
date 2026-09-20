@@ -200,6 +200,7 @@ struct ProjectDetailView: View {
     @State private var model: ProjectDetailModel
     @State private var showSources = false
     @State private var showSettings = false
+    @State private var showClassroom = false
     @State private var showNewNotebook = false
     @State private var showRename = false
     @State private var showDetails = false
@@ -246,6 +247,9 @@ struct ProjectDetailView: View {
         .toolbar(.hidden, for: .navigationBar)
         .navigationDestination(item: $notebookToOpen) { notebook in
             ProjectShellView(project: model.project, notebook: notebook)
+        }
+        .navigationDestination(isPresented: $showClassroom) {
+            ClassroomView(project: model.project)
         }
         .fullScreenCover(isPresented: $isGeneratingExam) {
             ExamLoadingView()
@@ -397,7 +401,7 @@ struct ProjectDetailView: View {
             ScrollView {
                 VStack(spacing: 18) {
                     contextCard
-                    examPrepCard
+                    studyActions
                 }
                 .padding(.horizontal, 20)
                 .padding(.bottom, 24)
@@ -507,64 +511,45 @@ struct ProjectDetailView: View {
         return rowHeight + spacing
     }
 
-    private var examPrepCard: some View {
-        HStack(spacing: 12) {
-            Button {
-                startExamPrep()
-            } label: {
-                HStack(spacing: 15) {
-                    ZStack {
-                        RoundedRectangle(cornerRadius: 14, style: .continuous)
-                            .fill(NomiTheme.blue.opacity(0.12))
-                            .frame(width: 52, height: 52)
-                        Image(systemName: "graduationcap.fill")
-                            .font(.system(size: 22, weight: .semibold))
-                            .foregroundStyle(NomiTheme.blue)
-                    }
-
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text("Exam Prep")
-                            .font(.headline)
-                            .foregroundStyle(NomiTheme.ink)
-                        Text("Build a likely exam, then grade it.")
-                            .font(.subheadline)
-                            .foregroundStyle(NomiTheme.secondaryInk)
-                            .multilineTextAlignment(.leading)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-
-                    Spacer(minLength: 0)
-                }
-                .padding(16)
-                .frame(maxWidth: .infinity)
-                .background(NomiTheme.surface, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 18, style: .continuous)
-                        .stroke(NomiTheme.hairline, lineWidth: 1)
-                )
+    private var studyActions: some View {
+        VStack(spacing: 10) {
+            ProjectActionRow(
+                icon: "book.fill",
+                title: "Learn \(model.project.name)",
+                subtitle: "Build your understanding"
+            ) {
+                showClassroom = true
             }
-            .buttonStyle(.plain)
+
+            ProjectActionRow(
+                icon: "doc.text.fill",
+                title: "Prep \(model.project.name)",
+                subtitle: "Practice and get ready"
+            ) {
+                startExamPrep()
+            }
             .disabled(model.isLoading)
 
             Button {
                 showPastExams = true
             } label: {
-                VStack(spacing: 6) {
+                HStack(spacing: 6) {
                     Image(systemName: "clock.arrow.circlepath")
-                        .font(.system(size: 20, weight: .semibold))
-                        .foregroundStyle(NomiTheme.blue)
-                    Text("Past\nexams")
-                        .font(.caption.weight(.semibold))
-                        .multilineTextAlignment(.center)
-                        .foregroundStyle(NomiTheme.ink)
+                    Text("Past exams")
+                    if !model.examNotebooks.isEmpty {
+                        Text("\(model.examNotebooks.count)")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(NomiTheme.secondaryInk)
+                    }
+                    Spacer()
+                    Image(systemName: "chevron.right")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(NomiTheme.secondaryInk.opacity(0.7))
                 }
-                .frame(width: 88)
-                .padding(.vertical, 16)
-                .background(NomiTheme.surface, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 18, style: .continuous)
-                        .stroke(NomiTheme.hairline, lineWidth: 1)
-                )
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(NomiTheme.blue)
+                .padding(.horizontal, 8)
+                .padding(.top, 2)
             }
             .buttonStyle(.plain)
         }
@@ -701,6 +686,52 @@ struct ProjectDetailView: View {
 
     private var readyPDFSources: [Source] {
         model.sources.filter { $0.kind == "pdf" && $0.status == "ready" }
+    }
+}
+
+private struct ProjectActionRow: View {
+    let icon: String
+    let title: String
+    let subtitle: String
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 14) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .fill(NomiTheme.blue.opacity(0.10))
+                    Image(systemName: icon)
+                        .font(.system(size: 18, weight: .semibold))
+                        .foregroundStyle(NomiTheme.blue)
+                }
+                .frame(width: 44, height: 44)
+
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(title)
+                        .font(.headline)
+                        .foregroundStyle(NomiTheme.ink)
+                        .lineLimit(2)
+                    Text(subtitle)
+                        .font(.subheadline)
+                        .foregroundStyle(NomiTheme.secondaryInk)
+                }
+
+                Spacer(minLength: 8)
+
+                Image(systemName: "chevron.right")
+                    .font(.footnote.weight(.bold))
+                    .foregroundStyle(NomiTheme.secondaryInk.opacity(0.72))
+            }
+            .padding(16)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(NomiTheme.surface, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .stroke(NomiTheme.hairline, lineWidth: 1)
+            }
+        }
+        .buttonStyle(.plain)
     }
 }
 

@@ -67,6 +67,92 @@ struct ChatResponse: Codable, Hashable {
     let citations: [Citation]
 }
 
+/// Optional entry point into classroom. Live tutoring can later fill `topic`
+/// and `promptContext` without changing the classroom screen itself.
+struct ClassroomSeed: Hashable {
+    var topic: String? = nil
+    var promptContext: String? = nil
+}
+
+struct ClassroomHistoryMessage: Codable, Hashable {
+    let role: String
+    let content: String
+}
+
+struct ClassroomSuggestionsResponse: Codable, Hashable {
+    let suggestions: [String]
+}
+
+struct ClassroomBoardCue: Codable, Hashable {
+    let kind: String
+    let instruction: String
+
+    enum CodingKeys: String, CodingKey {
+        case kind, instruction
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        kind = try container.decodeIfPresent(String.self, forKey: .kind) ?? "none"
+        instruction = try container.decodeIfPresent(String.self, forKey: .instruction) ?? ""
+    }
+}
+
+struct ClassroomLessonBeat: Codable, Hashable, Identifiable {
+    var id: Int { index }
+    let index: Int
+    let title: String
+    let speaking: String
+    let board: ClassroomBoardCue
+}
+
+struct ClassroomLessonSource: Codable, Hashable, Identifiable {
+    var id: String { sourceId }
+    let sourceId: String
+    let sourceTitle: String
+    let kind: String
+
+    enum CodingKeys: String, CodingKey {
+        case kind
+        case sourceId = "source_id"
+        case sourceTitle = "source_title"
+    }
+}
+
+struct ClassroomPassage: Codable, Hashable, Identifiable {
+    var id: String { chunkId }
+    let sourceId: String
+    let sourceTitle: String
+    let chunkId: String
+    let content: String
+    let score: Double
+
+    enum CodingKeys: String, CodingKey {
+        case content, score
+        case sourceId = "source_id"
+        case sourceTitle = "source_title"
+        case chunkId = "chunk_id"
+    }
+}
+
+struct ClassroomLesson: Codable, Hashable {
+    let inScope: Bool
+    let topic: String
+    let title: String
+    let reason: String?
+    let summary: String
+    let beats: [ClassroomLessonBeat]
+    let sources: [ClassroomLessonSource]
+    let citations: [Citation]
+    let passages: [ClassroomPassage]
+    let grounding: String
+
+    enum CodingKeys: String, CodingKey {
+        case topic, title, reason, summary, beats, sources, citations, passages, grounding
+        case inScope = "in_scope"
+    }
+}
+
 struct ShadowResponse: Codable, Hashable {
     let status: String
     let hint: String?
