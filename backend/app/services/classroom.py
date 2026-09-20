@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import math
 import re
 
 from sqlalchemy.orm import Session
@@ -10,11 +11,21 @@ from ..schemas import (
     ChatResponse,
     Citation,
     ClassroomBoardCue,
+    ClassroomBoardFrame,
+    ClassroomBoardPoint,
+    ClassroomClearBoardAction,
+    ClassroomDrawArrowAction,
+    ClassroomDrawAxesAction,
+    ClassroomDrawLineAction,
+    ClassroomDrawRectangleAction,
+    ClassroomHighlightAction,
     ClassroomHistoryMessage,
     ClassroomLessonBeat,
     ClassroomLessonOut,
     ClassroomLessonSource,
     ClassroomPassage,
+    ClassroomPlotPolylineAction,
+    ClassroomWriteTextAction,
 )
 from .llm import get_provider
 from .retrieval import RetrievedContext, gather_context
@@ -34,10 +45,26 @@ _PREPARE_SYSTEM = (
     "If it is not, in_scope must be false, beats must be empty, and reason "
     "should be one short sentence. If it is, produce 4 to 6 teaching beats "
     "a later step can play, pause, rewind, and draw. Do not invent facts. "
+    "Each board action uses normalized coordinates from 0 to 1 with origin at "
+    "the TOP-LEFT of the board. Actions run in array order and persist across "
+    "beats until a clear action. Use only these exact action shapes: "
+    "write_text {type,text,position:{x,y},style}; draw_line "
+    "{type,start:{x,y},end:{x,y},style}; draw_arrow "
+    "{type,start:{x,y},end:{x,y}}; draw_rectangle "
+    "{type,frame:{x,y,width,height},style}; draw_axes "
+    "{type,frame:{x,y,width,height},x_label,y_label}; plot_polyline "
+    "{type,points:[{x,y}],style}; highlight "
+    "{type,frame:{x,y,width,height}}; or clear {type}. "
+    "write_text style must be heading, body, equation, label, or emphasis. "
+    "Line and polyline style must be solid or dashed. Rectangle style must be "
+    "outline or filled. Frame x/y is its top-left corner; width/height extend "
+    "right and down and must remain inside the board. "
+    "Never include IDs; the server assigns them. "
     "Respond with STRICT JSON only, no prose and no code fences, matching:\n"
     '{"in_scope": bool, "topic": str, "title": str, "reason": str|null, '
     '"summary": str, "beats": [{"title": str, "speaking": str, '
-    '"board": {"kind": "diagram"|"equation"|"list"|"none", "instruction": str}}]}'
+    '"board": {"kind": "diagram"|"equation"|"list"|"none", "instruction": str, '
+    '"actions": [object]}}]}'
 )
 
 _SUGGEST_SYSTEM = (
@@ -48,6 +75,8 @@ _SUGGEST_SYSTEM = (
 
 _BOARD_KINDS = {"diagram", "equation", "list", "none"}
 _MAX_BEATS = 6
+_MAX_BOARD_ACTIONS_PER_BEAT = 12
+_MAX_POLYLINE_POINTS = 24
 _MAX_PASSAGE_CHARS = 1600
 _MAX_PASSAGES_CHARS = 16_000
 
@@ -118,10 +147,7 @@ def teach(
     )
     if extra:
         user += f"Extra context from tutoring:\n{extra}\n\n"
-    user += (
-        "Teach from the course context below.\n"
-        f"<<<CONTEXT>>>\n{context}\n<<<END>>>"
-    )
+    user += f"Teach from the course context below.\n<<<CONTEXT>>>\n{context}\n<<<END>>>"
     answer = provider.chat(_TEACH_SYSTEM, user).strip()
     return ChatResponse(answer=answer, citations=_citations(ctx, settings.top_k))
 
@@ -203,6 +229,147 @@ def _clean_title(value: str, fallback: str) -> str:
     return title or fallback
 
 
+def _coordinate(value: object) -> float | None:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    number = float(value)
+    if not math.isfinite(number):
+        return None
+    return min(1.0, max(0.0, number))
+
+
+def _point(value: object) -> ClassroomBoardPoint | None:
+    if not isinstance(value, dict):
+        return None
+    x, y = _coordinate(value.get("x")), _coordinate(value.get("y"))
+    if x is None or y is None:
+        return None
+    return ClassroomBoardPoint(x=x, y=y)
+
+
+def _frame(value: object) -> ClassroomBoardFrame | None:
+    if not isinstance(value, dict):
+        return None
+    x, y = _coordinate(value.get("x")), _coordinate(value.get("y"))
+    width, height = _coordinate(value.get("width")), _coordinate(value.get("height"))
+    if x is None or y is None or width is None or height is None:
+        return None
+    width, height = min(width, 1.0 - x), min(height, 1.0 - y)
+    if width <= 0.005 or height <= 0.005:
+        return None
+    return ClassroomBoardFrame(x=x, y=y, width=width, height=height)
+
+
+def _short_text(value: object, limit: int) -> str:
+    return " ".join(str(value or "").split())[:limit]
+
+
+def _normalize_board_actions(raw: object, beat_index: int) -> list:
+    if not isinstance(raw, list):
+        return []
+    actions: list = []
+    for item in raw:
+        if not isinstance(item, dict):
+            continue
+        action_type = str(item.get("type") or "").strip().lower()
+        action_id = f"b{beat_index}-a{len(actions)}"
+
+        if action_type == "write_text":
+            text = _short_text(item.get("text"), 240)
+            position = _point(item.get("position"))
+            style = str(item.get("style") or "body").strip().lower()
+            if style not in {"heading", "body", "equation", "label", "emphasis"}:
+                style = "body"
+            if text and position:
+                actions.append(
+                    ClassroomWriteTextAction(
+                        id=action_id,
+                        type="write_text",
+                        text=text,
+                        position=position,
+                        style=style,
+                    )
+                )
+        elif action_type == "draw_line":
+            start, end = _point(item.get("start")), _point(item.get("end"))
+            style = str(item.get("style") or "solid").strip().lower()
+            if style not in {"solid", "dashed"}:
+                style = "solid"
+            if start and end and start != end:
+                actions.append(
+                    ClassroomDrawLineAction(
+                        id=action_id,
+                        type="draw_line",
+                        start=start,
+                        end=end,
+                        style=style,
+                    )
+                )
+        elif action_type == "draw_arrow":
+            start, end = _point(item.get("start")), _point(item.get("end"))
+            if start and end and start != end:
+                actions.append(
+                    ClassroomDrawArrowAction(
+                        id=action_id, type="draw_arrow", start=start, end=end
+                    )
+                )
+        elif action_type == "draw_rectangle":
+            frame = _frame(item.get("frame"))
+            style = str(item.get("style") or "outline").strip().lower()
+            if style not in {"outline", "filled"}:
+                style = "outline"
+            if frame:
+                actions.append(
+                    ClassroomDrawRectangleAction(
+                        id=action_id, type="draw_rectangle", frame=frame, style=style
+                    )
+                )
+        elif action_type == "draw_axes":
+            frame = _frame(item.get("frame"))
+            if frame:
+                actions.append(
+                    ClassroomDrawAxesAction(
+                        id=action_id,
+                        type="draw_axes",
+                        frame=frame,
+                        x_label=_short_text(item.get("x_label"), 32),
+                        y_label=_short_text(item.get("y_label"), 32),
+                    )
+                )
+        elif action_type == "plot_polyline":
+            raw_points = (
+                item.get("points") if isinstance(item.get("points"), list) else []
+            )
+            points = [
+                point
+                for value in raw_points[:_MAX_POLYLINE_POINTS]
+                if (point := _point(value))
+            ]
+            style = str(item.get("style") or "solid").strip().lower()
+            if style not in {"solid", "dashed"}:
+                style = "solid"
+            if len(points) >= 2:
+                actions.append(
+                    ClassroomPlotPolylineAction(
+                        id=action_id, type="plot_polyline", points=points, style=style
+                    )
+                )
+        elif action_type == "highlight":
+            frame = _frame(item.get("frame"))
+            if frame:
+                actions.append(
+                    ClassroomHighlightAction(
+                        id=action_id, type="highlight", frame=frame
+                    )
+                )
+        elif action_type == "clear":
+            actions.append(ClassroomClearBoardAction(id=action_id, type="clear"))
+
+        if len(actions) == _MAX_BOARD_ACTIONS_PER_BEAT:
+            break
+    return actions
+
+
 def _normalize_beats(raw_beats: object) -> list[ClassroomLessonBeat]:
     if not isinstance(raw_beats, list):
         return []
@@ -219,12 +386,18 @@ def _normalize_beats(raw_beats: object) -> list[ClassroomLessonBeat]:
         if kind not in _BOARD_KINDS:
             kind = "none"
         instruction = " ".join(str(board_raw.get("instruction") or "").split())[:400]
+        beat_index = len(beats)
+        actions = _normalize_board_actions(board_raw.get("actions"), beat_index)
         beats.append(
             ClassroomLessonBeat(
-                index=len(beats),
+                index=beat_index,
                 title=title,
                 speaking=speaking,
-                board=ClassroomBoardCue(kind=kind, instruction=instruction),
+                board=ClassroomBoardCue(
+                    kind=kind,
+                    instruction=instruction,
+                    actions=actions,
+                ),
             )
         )
         if len(beats) == _MAX_BEATS:
@@ -263,7 +436,8 @@ def prepare_lesson(
     except (ValueError, json.JSONDecodeError):
         return _out_of_scope(
             cleaned,
-            "I couldn't prepare that lesson. Try a more specific topic from your sources.",
+            "I couldn't prepare that lesson. Try a more specific topic "
+            "from your sources.",
             ctx,
         )
 
@@ -275,7 +449,8 @@ def prepare_lesson(
         return _out_of_scope(
             cleaned,
             reason_text
-            or "That isn’t covered in this project’s sources. Pick a topic from the course.",
+            or "That isn’t covered in this project’s sources. "
+            "Pick a topic from the course.",
             ctx,
         )
 

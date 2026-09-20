@@ -33,6 +33,23 @@ final class ClassroomLessonPlayer {
         return Array(lesson.beats.prefix(currentBeatIndex + 1))
     }
 
+    /// Ordered command stream from lesson start through the current beat.
+    /// Replaying this stream from an empty Nomi layer reconstructs the board.
+    var boardActionsThroughCurrentBeat: [ClassroomBoardAction] {
+        visibleBeats.flatMap(\.board.actions).filter(\.isSupported)
+    }
+
+    /// Current semantic board contents after applying explicit clear actions.
+    var resolvedBoardActions: [ClassroomBoardAction] {
+        boardActionsThroughCurrentBeat.reduce(into: []) { result, action in
+            if action.isClear {
+                result.removeAll(keepingCapacity: true)
+            } else {
+                result.append(action)
+            }
+        }
+    }
+
     var progress: Double {
         guard let lesson, !lesson.beats.isEmpty else { return 0 }
         if playbackState == .completed { return 1 }

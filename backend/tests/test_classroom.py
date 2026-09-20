@@ -7,6 +7,7 @@ os.environ["DATABASE_URL"] = "sqlite:///:memory:"
 from app.db import Base, SessionLocal, engine, init_db  # noqa: E402
 from app.models import Project, Source  # noqa: E402
 from app.services.classroom import (  # noqa: E402
+    _normalize_beats,
     _parse_suggestions,
     prepare_lesson,
     suggest_topics,
@@ -26,6 +27,67 @@ class SuggestionParseTests(unittest.TestCase):
     def test_rejects_short_or_duplicate_lists(self):
         self.assertEqual(_parse_suggestions('["one", "one", "two"]'), [])
         self.assertEqual(_parse_suggestions('["only two", "topics"]'), [])
+
+
+class BoardProtocolTests(unittest.TestCase):
+    def test_actions_are_typed_clamped_and_server_identified(self):
+        beats = _normalize_beats(
+            [
+                {
+                    "title": "Feedback loop",
+                    "speaking": "A feedback loop compares output with the reference.",
+                    "board": {
+                        "kind": "diagram",
+                        "instruction": "Sketch the loop.",
+                        "actions": [
+                            {
+                                "id": "model-controlled-id",
+                                "type": "write_text",
+                                "text": "  Reference   input  ",
+                                "position": {"x": -0.5, "y": 1.5},
+                                "style": "not-a-style",
+                            },
+                            {
+                                "type": "draw_arrow",
+                                "start": {"x": 0.2, "y": 0.3},
+                                "end": {"x": 0.8, "y": 0.3},
+                            },
+                            {"type": "draw_line", "start": {"x": 0.1, "y": 0.1}},
+                            {"type": "unknown", "text": "drop me"},
+                        ],
+                    },
+                }
+            ]
+        )
+        actions = beats[0].board.actions
+        self.assertEqual([action.id for action in actions], ["b0-a0", "b0-a1"])
+        self.assertEqual(actions[0].type, "write_text")
+        self.assertEqual(actions[0].position.x, 0.0)
+        self.assertEqual(actions[0].position.y, 1.0)
+        self.assertEqual(actions[0].style, "body")
+        self.assertEqual(actions[1].type, "draw_arrow")
+
+    def test_invalid_geometry_is_discarded(self):
+        beats = _normalize_beats(
+            [
+                {
+                    "title": "Plot",
+                    "speaking": "Plot the response.",
+                    "board": {
+                        "actions": [
+                            {
+                                "type": "draw_rectangle",
+                                "frame": {"x": 1, "y": 1, "width": 1, "height": 1},
+                            },
+                            {"type": "plot_polyline", "points": [{"x": 0, "y": 0}]},
+                            {"type": "clear"},
+                        ]
+                    },
+                }
+            ]
+        )
+        self.assertEqual(len(beats[0].board.actions), 1)
+        self.assertEqual(beats[0].board.actions[0].type, "clear")
 
 
 class ClassroomServiceTests(unittest.TestCase):
@@ -54,7 +116,9 @@ class ClassroomServiceTests(unittest.TestCase):
         return source
 
     def test_empty_project_has_no_suggestions(self):
-        self.assertEqual(suggest_topics(self.db, self.project.id, self.project.name), [])
+        self.assertEqual(
+            suggest_topics(self.db, self.project.id, self.project.name), []
+        )
 
     def test_suggests_topics_from_sources(self):
         self._ready_source(
@@ -73,7 +137,8 @@ class ClassroomServiceTests(unittest.TestCase):
     def test_teach_uses_course_material(self):
         self._ready_source(
             "Compensators",
-            "A lead compensator increases phase margin and speeds the transient response.",
+            "A lead compensator increases phase margin and speeds the "
+            "transient response.",
         )
         response = teach(self.db, self.project.id, "lead compensators")
         self.assertTrue(response.answer)
@@ -89,7 +154,8 @@ class ClassroomServiceTests(unittest.TestCase):
     def test_prepare_in_scope_returns_beats_and_passages(self):
         self._ready_source(
             "Compensators",
-            "A lead compensator increases phase margin and speeds the transient response.",
+            "A lead compensator increases phase margin and speeds the "
+            "transient response.",
         )
         lesson = prepare_lesson(self.db, self.project.id, "lead compensators")
         self.assertTrue(lesson.in_scope)
@@ -97,12 +163,15 @@ class ClassroomServiceTests(unittest.TestCase):
         self.assertTrue(lesson.sources)
         self.assertTrue(lesson.passages)
         self.assertEqual(lesson.grounding, "full")
+        self.assertEqual(lesson.board_protocol_version, 1)
         self.assertTrue(all(beat.speaking for beat in lesson.beats))
+        self.assertTrue(any(beat.board.actions for beat in lesson.beats))
 
     def test_prepare_unrelated_topic_is_out_of_scope(self):
         self._ready_source(
             "Compensators",
-            "A lead compensator increases phase margin and speeds the transient response.",
+            "A lead compensator increases phase margin and speeds the "
+            "transient response.",
         )
         lesson = prepare_lesson(self.db, self.project.id, "basket weaving")
         self.assertFalse(lesson.in_scope)

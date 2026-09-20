@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Literal
+from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -92,9 +92,92 @@ class ClassroomPrepareRequest(BaseModel):
     prompt_context: str | None = Field(default=None, max_length=4000)
 
 
+class ClassroomBoardPoint(BaseModel):
+    """Normalized board coordinate. Origin is the board's top-left corner."""
+
+    x: float = Field(ge=0.0, le=1.0)
+    y: float = Field(ge=0.0, le=1.0)
+
+
+class ClassroomBoardFrame(ClassroomBoardPoint):
+    width: float = Field(gt=0.0, le=1.0)
+    height: float = Field(gt=0.0, le=1.0)
+
+
+class ClassroomWriteTextAction(BaseModel):
+    id: str
+    type: Literal["write_text"]
+    text: str
+    position: ClassroomBoardPoint
+    style: Literal["heading", "body", "equation", "label", "emphasis"] = "body"
+
+
+class ClassroomDrawLineAction(BaseModel):
+    id: str
+    type: Literal["draw_line"]
+    start: ClassroomBoardPoint
+    end: ClassroomBoardPoint
+    style: Literal["solid", "dashed"] = "solid"
+
+
+class ClassroomDrawArrowAction(BaseModel):
+    id: str
+    type: Literal["draw_arrow"]
+    start: ClassroomBoardPoint
+    end: ClassroomBoardPoint
+
+
+class ClassroomDrawRectangleAction(BaseModel):
+    id: str
+    type: Literal["draw_rectangle"]
+    frame: ClassroomBoardFrame
+    style: Literal["outline", "filled"] = "outline"
+
+
+class ClassroomDrawAxesAction(BaseModel):
+    id: str
+    type: Literal["draw_axes"]
+    frame: ClassroomBoardFrame
+    x_label: str = ""
+    y_label: str = ""
+
+
+class ClassroomPlotPolylineAction(BaseModel):
+    id: str
+    type: Literal["plot_polyline"]
+    points: list[ClassroomBoardPoint]
+    style: Literal["solid", "dashed"] = "solid"
+
+
+class ClassroomHighlightAction(BaseModel):
+    id: str
+    type: Literal["highlight"]
+    frame: ClassroomBoardFrame
+
+
+class ClassroomClearBoardAction(BaseModel):
+    id: str
+    type: Literal["clear"]
+
+
+ClassroomBoardAction = Annotated[
+    ClassroomWriteTextAction
+    | ClassroomDrawLineAction
+    | ClassroomDrawArrowAction
+    | ClassroomDrawRectangleAction
+    | ClassroomDrawAxesAction
+    | ClassroomPlotPolylineAction
+    | ClassroomHighlightAction
+    | ClassroomClearBoardAction,
+    Field(discriminator="type"),
+]
+
+
 class ClassroomBoardCue(BaseModel):
+    # Legacy semantic fields remain for clients deployed before board protocol v1.
     kind: Literal["diagram", "equation", "list", "none"] = "none"
     instruction: str = ""
+    actions: list[ClassroomBoardAction] = []
 
 
 class ClassroomLessonBeat(BaseModel):
@@ -119,6 +202,7 @@ class ClassroomPassage(BaseModel):
 
 
 class ClassroomLessonOut(BaseModel):
+    board_protocol_version: Literal[1] = 1
     in_scope: bool
     topic: str
     title: str = ""

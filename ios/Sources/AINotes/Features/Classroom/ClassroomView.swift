@@ -550,24 +550,42 @@ private struct ClassroomBoardView: View {
 
     @ViewBuilder
     private var boardTrail: some View {
-        let cues = player.visibleBeats.filter { $0.board.kind != "none" && !$0.board.instruction.isEmpty }
-        if !cues.isEmpty {
+        let actions = player.resolvedBoardActions
+        let legacyCues = player.visibleBeats.filter {
+            $0.board.actions.isEmpty && $0.board.kind != "none" && !$0.board.instruction.isEmpty
+        }
+        if !actions.isEmpty || !legacyCues.isEmpty {
             VStack(alignment: .leading, spacing: 8) {
                 Text("ON THE BOARD")
                     .font(.caption2.weight(.bold))
                     .tracking(1)
                     .foregroundStyle(NomiTheme.secondaryInk)
 
-                ForEach(cues.suffix(3)) { beat in
+                ForEach(actions.suffix(3)) { action in
                     HStack(alignment: .firstTextBaseline, spacing: 10) {
-                        Image(systemName: boardIcon(for: beat.board.kind))
+                        Image(systemName: boardIcon(for: action))
                             .font(.caption.weight(.semibold))
                             .foregroundStyle(NomiTheme.blue)
                             .frame(width: 18)
-                        Text(beat.board.instruction)
+                        Text(action.previewDescription)
                             .font(.subheadline)
                             .foregroundStyle(NomiTheme.secondaryInk)
                             .lineLimit(2)
+                    }
+                }
+
+                if actions.isEmpty {
+                    ForEach(legacyCues.suffix(3)) { beat in
+                        HStack(alignment: .firstTextBaseline, spacing: 10) {
+                            Image(systemName: legacyBoardIcon(for: beat.board.kind))
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(NomiTheme.blue)
+                                .frame(width: 18)
+                            Text(beat.board.instruction)
+                                .font(.subheadline)
+                                .foregroundStyle(NomiTheme.secondaryInk)
+                                .lineLimit(2)
+                        }
                     }
                 }
             }
@@ -577,7 +595,21 @@ private struct ClassroomBoardView: View {
         }
     }
 
-    private func boardIcon(for kind: String) -> String {
+    private func boardIcon(for action: ClassroomBoardAction) -> String {
+        switch action {
+        case let .writeText(value): value.style == "equation" ? "function" : "textformat"
+        case .drawLine: "line.diagonal"
+        case .drawArrow: "arrow.right"
+        case .drawRectangle: "rectangle"
+        case .drawAxes: "chart.xyaxis.line"
+        case .plotPolyline: "chart.line.uptrend.xyaxis"
+        case .highlight: "highlighter"
+        case .clear: "eraser"
+        case .unsupported: "questionmark"
+        }
+    }
+
+    private func legacyBoardIcon(for kind: String) -> String {
         switch kind {
         case "equation": "function"
         case "diagram": "point.3.connected.trianglepath.dotted"

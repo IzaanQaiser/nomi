@@ -83,8 +83,21 @@ class MockProvider(LLMProvider):
                     "beats": [
                         {
                             "title": "The idea",
-                            "speaking": "Start with the core definition from the notes.",
-                            "board": {"kind": "none", "instruction": ""},
+                            "speaking": (
+                                "Start with the core definition from the notes."
+                            ),
+                            "board": {
+                                "kind": "list",
+                                "instruction": "Write the core definition.",
+                                "actions": [
+                                    {
+                                        "type": "write_text",
+                                        "text": "Core definition",
+                                        "position": {"x": 0.10, "y": 0.12},
+                                        "style": "heading",
+                                    }
+                                ],
+                            },
                         },
                         {
                             "title": "How it works",
@@ -92,6 +105,23 @@ class MockProvider(LLMProvider):
                             "board": {
                                 "kind": "diagram",
                                 "instruction": "Sketch the main relationship.",
+                                "actions": [
+                                    {
+                                        "type": "draw_rectangle",
+                                        "frame": {
+                                            "x": 0.12,
+                                            "y": 0.35,
+                                            "width": 0.24,
+                                            "height": 0.16,
+                                        },
+                                        "style": "outline",
+                                    },
+                                    {
+                                        "type": "draw_arrow",
+                                        "start": {"x": 0.36, "y": 0.43},
+                                        "end": {"x": 0.58, "y": 0.43},
+                                    },
+                                ],
                             },
                         },
                         {
@@ -100,12 +130,22 @@ class MockProvider(LLMProvider):
                             "board": {
                                 "kind": "equation",
                                 "instruction": "Write the key relation.",
+                                "actions": [
+                                    {
+                                        "type": "write_text",
+                                        "text": "Key relation",
+                                        "position": {"x": 0.12, "y": 0.65},
+                                        "style": "equation",
+                                    }
+                                ],
                             },
                         },
                         {
                             "title": "Check",
-                            "speaking": "Ask the student to restate the idea in one sentence.",
-                            "board": {"kind": "none", "instruction": ""},
+                            "speaking": (
+                                "Ask the student to restate the idea in one sentence."
+                            ),
+                            "board": {"kind": "none", "instruction": "", "actions": []},
                         },
                     ],
                 }
@@ -124,7 +164,10 @@ class MockProvider(LLMProvider):
         if "precise OCR system" in system:
             return "Mock OCR text from uploaded PNG."
         # Infer-problem pass: we can't actually read the image, so stay honest.
-        if "Identify the single problem" in system or "What problem is on this page" in user:
+        if (
+            "Identify the single problem" in system
+            or "What problem is on this page" in user
+        ):
             return "unknown"
         if "live tutor sitting next to the student" in system:
             said = ""
@@ -132,8 +175,13 @@ class MockProvider(LLMProvider):
                 said = user.split('The student said: "', 1)[1].split('"', 1)[0]
             if not said or "silent" in user.lower():
                 return "Looks like you paused — want a nudge on the next step?"
-            if any(w in said.lower() for w in ("stuck", "help", "hint", "confused", "idk")):
-                return "You're close. Look back at the method in your notes and try the next small step — I won't spoil it."
+            if any(
+                w in said.lower() for w in ("stuck", "help", "hint", "confused", "idk")
+            ):
+                return (
+                    "You're close. Look back at the method in your notes and try "
+                    "the next small step — I won't spoil it."
+                )
             return f"Got it. Let's stay with what you just said: {said[:120]}"
         if "full worked solution" in system or "Show the full worked solution" in user:
             return (
@@ -155,5 +203,7 @@ class MockProvider(LLMProvider):
             else "mock: analyzed page with no source context"
         )
         return (
-            '{"status": "ok", "hint": null, "note": null, "reasoning": "' + reasoning + '"}'
+            '{"status": "ok", "hint": null, "note": null, "reasoning": "'
+            + reasoning
+            + '"}'
         )
