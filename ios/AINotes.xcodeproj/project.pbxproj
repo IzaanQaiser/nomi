@@ -7,11 +7,14 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		0402D1C17FA9A4073423F2F9 /* ExamMascotView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA45C39EA21491C01F181FDF /* ExamMascotView.swift */; };
 		16FCDFEF48D8EB9EDA73E5EB /* NotesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 94458247361C0263A2E14C6B /* NotesView.swift */; };
 		18AC36FE26D50A2B0223F1BA /* VoiceListener.swift in Sources */ = {isa = PBXBuildFile; fileRef = FDA93EC4CF0D0827DF813DF7 /* VoiceListener.swift */; };
 		19C1EE07FFAE9E2CA4C84B68 /* MascotView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 023AB4D41B0AB1B14FC6B686 /* MascotView.swift */; };
+		1DAD3241567917C81A87BD28 /* ExamBreakdownView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B3F6A61110120856C33C08AA /* ExamBreakdownView.swift */; };
 		311924AE56E3DA7C9E559BDF /* NotePenIsland.swift in Sources */ = {isa = PBXBuildFile; fileRef = 864E8A7C87BFA3F295D7AAF4 /* NotePenIsland.swift */; };
 		4F6F13F2B58C846745EF329E /* ExamPDFRenderer.swift in Sources */ = {isa = PBXBuildFile; fileRef = E32A9DA72323CC125FAAF338 /* ExamPDFRenderer.swift */; };
+		5574495BBFCA963F83868B91 /* ExamController.swift in Sources */ = {isa = PBXBuildFile; fileRef = BAFC02237898134C0C49C1A8 /* ExamController.swift */; };
 		56E9B90C5182C3AB0BD94489 /* PDFNoteStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 232BF27888FAD67E5A1CB1C5 /* PDFNoteStore.swift */; };
 		6E27BD9D535CD127CFF6B03C /* NomiView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5121BDAB652C33EF3227270A /* NomiView.swift */; };
 		7072889C3D649B5341721BB3 /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3B7C3834AC2B3B2549409FB2 /* RootView.swift */; };
@@ -55,11 +58,14 @@
 		864E8A7C87BFA3F295D7AAF4 /* NotePenIsland.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotePenIsland.swift; sourceTree = "<group>"; };
 		866324A84A4B0BC38F6D2B85 /* ExamLoadingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExamLoadingView.swift; sourceTree = "<group>"; };
 		94458247361C0263A2E14C6B /* NotesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotesView.swift; sourceTree = "<group>"; };
+		AA45C39EA21491C01F181FDF /* ExamMascotView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExamMascotView.swift; sourceTree = "<group>"; };
 		AC553F06A3FF96FAD09CF89B /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		AE44840C36985C7FBA06409C /* ShadowingEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShadowingEngine.swift; sourceTree = "<group>"; };
 		AEFDC36DA86F377C78357395 /* ChatView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatView.swift; sourceTree = "<group>"; };
 		B328DED5D19F65E7005C51CA /* ProjectsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectsView.swift; sourceTree = "<group>"; };
+		B3F6A61110120856C33C08AA /* ExamBreakdownView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExamBreakdownView.swift; sourceTree = "<group>"; };
 		B6A0F7838FC7E64FA1C2BEC1 /* APIClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APIClient.swift; sourceTree = "<group>"; };
+		BAFC02237898134C0C49C1A8 /* ExamController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExamController.swift; sourceTree = "<group>"; };
 		C0A5CB77D203F0F87CC0E8AA /* OnboardingFlowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingFlowView.swift; sourceTree = "<group>"; };
 		CAD6BAC7BCA677FCECB4746F /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		DFD3079071FB36886B29BF05 /* CourseContextView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CourseContextView.swift; sourceTree = "<group>"; };
@@ -121,7 +127,10 @@
 		94452AA1B244A65F02A50501 /* Exam */ = {
 			isa = PBXGroup;
 			children = (
+				B3F6A61110120856C33C08AA /* ExamBreakdownView.swift */,
+				BAFC02237898134C0C49C1A8 /* ExamController.swift */,
 				866324A84A4B0BC38F6D2B85 /* ExamLoadingView.swift */,
+				AA45C39EA21491C01F181FDF /* ExamMascotView.swift */,
 				E32A9DA72323CC125FAAF338 /* ExamPDFRenderer.swift */,
 				E139EE49834D2DA9A276C1A5 /* ExamStore.swift */,
 			);
@@ -288,7 +297,10 @@
 				B8F35CF8163154C661E820F6 /* ChatView.swift in Sources */,
 				88A88BA2AD43B1C07B1E2C89 /* CourseContextView.swift in Sources */,
 				97AFC6CCC0F97D574169F8BF /* DTOs.swift in Sources */,
+				1DAD3241567917C81A87BD28 /* ExamBreakdownView.swift in Sources */,
+				5574495BBFCA963F83868B91 /* ExamController.swift in Sources */,
 				B22E6FEC11D1DB51182F32A0 /* ExamLoadingView.swift in Sources */,
+				0402D1C17FA9A4073423F2F9 /* ExamMascotView.swift in Sources */,
 				4F6F13F2B58C846745EF329E /* ExamPDFRenderer.swift in Sources */,
 				CC4A090CCC1AD1E05867729B /* ExamStore.swift in Sources */,
 				F0795B477D265B5199396FCD /* FirstLaunchView.swift in Sources */,

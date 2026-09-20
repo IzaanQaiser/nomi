@@ -3,19 +3,20 @@ import SwiftUI
 /// Full-screen "Nomi is building your exam" state. A large thinking Nomi with
 /// course symbols orbiting him while the (slow) generation request runs.
 struct ExamLoadingView: View {
-    /// Optional caption override; otherwise cycles through study phrases.
+    /// Optional caption override; otherwise cycles through `phrases`.
     var caption: String?
-
-    private let orbiting: [String] = [
-        "function", "sum", "pencil.and.outline", "doc.text",
-        "ruler", "x.squareroot", "chart.xyaxis.line", "highlighter",
-    ]
-    private let phrases = [
+    /// Cycling status lines; defaults to the exam-building set.
+    var phrases: [String] = [
         "Reading your notes…",
         "Studying past exams…",
         "Weighing the tricky topics…",
         "Setting fair questions…",
         "Leaving you room to write…",
+    ]
+
+    private let orbiting: [String] = [
+        "function", "sum", "pencil.and.outline", "doc.text",
+        "ruler", "x.squareroot", "chart.xyaxis.line", "highlighter",
     ]
 
     var body: some View {

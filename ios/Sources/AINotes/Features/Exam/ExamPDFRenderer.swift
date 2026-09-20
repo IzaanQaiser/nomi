@@ -8,8 +8,7 @@ enum ExamPDFRenderer {
     // US Letter at 72dpi.
     private static let pageSize = CGSize(width: 612, height: 792)
     private static let margin: CGFloat = 54
-    private static let lineGap: CGFloat = 30      // space per ruled answer line
-    private static let ruleColor = UIColor(white: 0.72, alpha: 1)
+    private static let lineGap: CGFloat = 30      // vertical writing space per "line"
 
     static func makePDF(from exam: GeneratedExam) -> Data {
         let bounds = CGRect(origin: .zero, size: pageSize)
@@ -40,11 +39,9 @@ enum ExamPDFRenderer {
                 cursor.pad(4)
 
                 for q in section.questions {
-                    cursor.reserve(40 + lineGap)   // keep prompt with at least one line
-                    let prompt = "\(q.number).  \(q.prompt)"
-                    let marks = "[\(q.marks) \(q.marks == 1 ? "mark" : "marks")]"
-                    cursor.drawQuestion(prompt: prompt, marks: marks)
-                    cursor.answerLines(q.answerLines)
+                    cursor.reserve(40 + lineGap)   // keep prompt with some space below
+                    cursor.drawQuestion(number: q.number, prompt: q.prompt, marks: q.marks)
+                    cursor.answerSpace(q.answerLines)
                     cursor.pad(14)
                 }
                 cursor.pad(8)
@@ -80,42 +77,48 @@ enum ExamPDFRenderer {
 
         mutating func draw(_ text: String, font: UIFont, color: UIColor = .black,
                            spacingAfter: CGFloat = 0) {
-            let attrs: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: color]
-            let rect = CGRect(x: margin, y: y, width: contentWidth, height: .greatestFiniteMagnitude)
-            let bounding = (text as NSString).boundingRect(
+            let attributed = NSAttributedString(
+                string: text, attributes: [.font: font, .foregroundColor: color])
+            drawAttributed(attributed, spacingAfter: spacingAfter)
+        }
+
+        mutating func drawAttributed(_ text: NSAttributedString, spacingAfter: CGFloat = 0) {
+            let bounding = text.boundingRect(
                 with: CGSize(width: contentWidth, height: .greatestFiniteMagnitude),
-                options: [.usesLineFragmentOrigin, .usesFontLeading],
-                attributes: attrs, context: nil)
+                options: [.usesLineFragmentOrigin, .usesFontLeading], context: nil)
             if y + bounding.height > maxY { beginPage() }
-            (text as NSString).draw(
+            text.draw(
                 with: CGRect(x: margin, y: y, width: contentWidth, height: bounding.height),
-                options: [.usesLineFragmentOrigin, .usesFontLeading],
-                attributes: attrs, context: nil)
-            _ = rect
+                options: [.usesLineFragmentOrigin, .usesFontLeading], context: nil)
             y += bounding.height + spacingAfter
         }
 
-        /// Question prompt on the left, marks pinned to the right of the first line.
-        mutating func drawQuestion(prompt: String, marks: String) {
+        /// The marks are appended to the end of the prompt as bold "[N marks]",
+        /// same font size, so they can never sit on top of the question text.
+        mutating func drawQuestion(number: String, prompt: String, marks: Int) {
             let font = UIFont.systemFont(ofSize: 13, weight: .medium)
-            let marksFont = UIFont.systemFont(ofSize: 11, weight: .semibold)
-            let marksAttrs: [NSAttributedString.Key: Any] = [.font: marksFont, .foregroundColor: UIColor.darkGray]
-            let marksSize = (marks as NSString).size(withAttributes: marksAttrs)
-            (marks as NSString).draw(at: CGPoint(x: bounds.width - margin - marksSize.width, y: y),
-                                     withAttributes: marksAttrs)
-            draw(prompt, font: font, spacingAfter: 8)
+            let bold = UIFont.systemFont(ofSize: 13, weight: .bold)
+            let unit = marks == 1 ? "mark" : "marks"
+            let line = NSMutableAttributedString(
+                string: "\(number).  \(prompt)",
+                attributes: [.font: font, .foregroundColor: UIColor.black])
+            line.append(NSAttributedString(
+                string: "  [\(marks) \(unit)]",
+                attributes: [.font: bold, .foregroundColor: UIColor.black]))
+            drawAttributed(line, spacingAfter: 8)
         }
 
-        mutating func answerLines(_ count: Int) {
-            guard count > 0, let cg = UIGraphicsGetCurrentContext() else { return }
-            cg.setStrokeColor(ruleColor.cgColor)
-            cg.setLineWidth(0.5)
-            for _ in 0..<count {
-                if y + lineGap > maxY { beginPage() }
-                y += lineGap
-                cg.move(to: CGPoint(x: margin, y: y))
-                cg.addLine(to: CGPoint(x: bounds.width - margin, y: y))
-                cg.strokePath()
+        /// Blank writing space (no rules), sized by the question, split across
+        /// pages when it doesn't all fit.
+        mutating func answerSpace(_ lines: Int) {
+            var remaining = CGFloat(max(1, lines)) * lineGap
+            while remaining > 0 {
+                let available = maxY - y
+                if available <= 1 { beginPage(); continue }
+                let take = min(remaining, available)
+                y += take
+                remaining -= take
+                if remaining > 0 { beginPage() }
             }
         }
 

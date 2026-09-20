@@ -73,7 +73,7 @@ public enum NomiPalette {
 // MARK: - Poses
 
 public enum NomiPose: Equatable {
-    case sleep, idle, thinking, confirm, nudge, talk, listening
+    case sleep, idle, thinking, confirm, nudge, talk, listening, sad
 
     var badge: NomiBadge? {
         switch self {
@@ -82,7 +82,7 @@ public enum NomiPose: Equatable {
         case .confirm:   return .check
         case .nudge:     return .alert
         case .talk:      return .lines
-        case .idle, .listening: return nil
+        case .idle, .listening, .sad: return nil
         }
     }
     /// Breathing period in seconds.
@@ -95,6 +95,7 @@ public enum NomiPose: Equatable {
         case .nudge: return 3.0
         case .talk: return 2.8
         case .listening: return 2.6
+        case .sad: return 4.6
         }
     }
     /// Breathing amplitude as a fraction of height.
@@ -105,6 +106,7 @@ public enum NomiPose: Equatable {
         case .thinking: return 0.016
         case .confirm: return 0.018
         case .nudge, .talk: return 0.020
+        case .sad: return 0.012
         }
     }
     var tilt: Double {
@@ -112,6 +114,7 @@ public enum NomiPose: Equatable {
         case .sleep: return -3
         case .thinking: return 2
         case .nudge: return -4
+        case .sad: return -2
         default: return 0
         }
     }
@@ -121,6 +124,7 @@ public enum NomiPose: Equatable {
         switch self {
         case .thinking: return CGPoint(x: 0.62, y: -0.86)
         case .nudge:    return CGPoint(x: 0.90, y: -0.35)
+        case .sad:      return CGPoint(x: 0, y: 0.62)
         default:        return nil
         }
     }
@@ -128,7 +132,14 @@ public enum NomiPose: Equatable {
     var sleepyEyes: Bool { self == .sleep }
     var leftSquint: Double { self == .nudge ? 0.38 : 0 }
     var showsBrow: Bool { self == .nudge }
-    var smileScale: Double { self == .confirm ? 1.25 : 1.0 }
+    /// Negative bends the mouth into a frown (sad); >1 widens the smile.
+    var smileScale: Double {
+        switch self {
+        case .confirm: return 1.25
+        case .sad:     return -1.1
+        default:       return 1.0
+        }
+    }
     var blinks: Bool { !happyEyes && !sleepyEyes }
     /// Blink a little less while it is listening to you, which reads as attention.
     var blinkPeriod: Double { self == .listening ? 7.5 : 4.6 }

@@ -35,6 +35,11 @@ struct NotesView: View {
     @State private var bgCache = BackgroundCache()
     /// Custom drawing tools (replaces Apple's PKToolPicker) + undo/redo state.
     @StateObject private var tools = NoteToolController()
+    /// Exam Mode (timer + nudges + grading). Inert for non-exam notebooks.
+    @StateObject private var examController: ExamController
+    @State private var gradingStarted = false
+    @State private var dismissedResults = false
+    @State private var showHandInConfirm = false
     @ObservedObject var shadowing: ShadowingEngine
 
     private let project: Project
@@ -63,6 +68,10 @@ struct NotesView: View {
         _shadowing = ObservedObject(wrappedValue: shadowing)
         let defaults = UserDefaults.standard
         let notebookStorageID = notebook.storageID(projectID: project.id)
+        _examController = StateObject(wrappedValue: ExamController(
+            exam: ExamStore.load(storageID: notebookStorageID),
+            storageID: notebookStorageID
+        ))
         _paperStyle = State(initialValue: PaperStyle(rawValue: defaults.string(forKey: "paperStyle-\(notebookStorageID)") ?? "") ?? .ruled)
         _paperColor = State(initialValue: PaperColor(rawValue: defaults.string(forKey: "paperColor-\(notebookStorageID)") ?? "") ?? .white)
         _paperPages = State(initialValue: max(1, defaults.integer(forKey: "paperPages-\(notebookStorageID)")))
@@ -131,9 +140,10 @@ struct NotesView: View {
             storeKey: storeKey,
             canonicalSize: canonicalSize,
             background: background,
-            canAddPage: mode == .paper,
+            canAddPage: examController.isActive ? false : (mode == .paper),
             onAddPage: addPage,
-            shadowing: shadowing,
+            // The tutor stays silent during an exam.
+            shadowing: examController.isActive ? nil : shadowing,
             tools: tools
         )
         .ignoresSafeArea(edges: .bottom)
@@ -141,16 +151,50 @@ struct NotesView: View {
             PenIslandView(tools: tools)
         }
         .overlay(alignment: .topTrailing) {
-            MascotView(engine: shadowing)
-                .padding(.top, 82)
-                .padding(.trailing, 14)
+            Group {
+                if examController.isActive {
+                    ExamMascotView(controller: examController)
+                } else {
+                    MascotView(engine: shadowing)
+                }
+            }
+            .padding(.top, 82)
+            .padding(.trailing, 14)
         }
         .overlay(alignment: .top) {
             notebookHeader
                 .padding(.horizontal, 16)
                 .padding(.top, 8)
         }
-        .onAppear { loadPDFIfNeeded() }
+        .fullScreenCover(item: examOverlayItem) { item in
+            switch item {
+            case .grading:
+                ExamLoadingView(phrases: [
+                    "Reading your answers…",
+                    "Checking against the exam…",
+                    "Awarding marks…",
+                    "Writing your feedback…",
+                ])
+                .task { await runGradingIfNeeded() }
+            case let .results(grade):
+                if let exam = examController.exam {
+                    ExamBreakdownView(exam: exam, grade: grade) {
+                        dismissedResults = true
+                    }
+                }
+            }
+        }
+        .alert("Couldn’t grade the exam", isPresented: gradingFailedBinding) {
+            Button("Try again") { examController.retryGrading() }
+            Button("Back to notes", role: .cancel) { examController.phase = .writing }
+        } message: {
+            if case let .failed(msg) = examController.phase { Text(msg) }
+        }
+        .onAppear {
+            loadPDFIfNeeded()
+            examController.start()
+        }
+        .onDisappear { examController.stop() }
         .onChange(of: paperStyle) { _, style in
             UserDefaults.standard.set(style.rawValue, forKey: styleKey)
         }
@@ -173,6 +217,61 @@ struct NotesView: View {
         )) {
             Button("OK") { importError = nil }
         } message: { Text(importError ?? "") }
+    }
+
+    // MARK: Exam Mode
+
+    private enum ExamOverlayItem: Identifiable {
+        case grading
+        case results(ExamGrade)
+        var id: String {
+            switch self {
+            case .grading: return "grading"
+            case .results: return "results"
+            }
+        }
+    }
+
+    private var examOverlayItem: Binding<ExamOverlayItem?> {
+        Binding(
+            get: {
+                switch examController.phase {
+                case .grading: return .grading
+                case let .done(grade): return dismissedResults ? nil : .results(grade)
+                default: return nil
+                }
+            },
+            set: { _ in }
+        )
+    }
+
+    private var gradingFailedBinding: Binding<Bool> {
+        Binding(
+            get: { if case .failed = examController.phase { return true } else { return false } },
+            set: { _ in }
+        )
+    }
+
+    /// Render the filled pages and grade them. Runs when the grading cover shows.
+    private func runGradingIfNeeded() async {
+        guard !gradingStarted, let exam = examController.exam else { return }
+        gradingStarted = true
+        defer { gradingStarted = false }
+        // Give any debounced ink autosave a moment to flush to disk first.
+        try? await Task.sleep(nanoseconds: 900_000_000)
+        let images = ExamPageRenderer.renderPages(
+            storeKey: storeKey,
+            pageCount: pageCount,
+            canonicalSize: canonicalSize,
+            background: background
+        )
+        do {
+            let grade = try await APIClient.shared.gradeExam(
+                projectId: project.id, exam: exam, pageImagesBase64: images)
+            examController.complete(with: grade)
+        } catch {
+            examController.fail(error.localizedDescription)
+        }
     }
 
     // MARK: Actions
@@ -237,14 +336,20 @@ struct NotesView: View {
                 .modifier(NotebookGlassIsland(shape: AnyShape(Circle())))
                 .accessibilityLabel("Back")
 
-                Spacer(minLength: 180)
+                if examController.isActive, case .writing = examController.phase {
+                    examTimerPill
+                }
+
+                Spacer(minLength: 120)
 
                 HStack(spacing: 2) {
-                    notebookActionButton(
-                        shadowing.isListening ? "Stop listening" : "Talk to tutor",
-                        systemImage: shadowing.isListening ? "mic.fill" : "mic.slash.fill"
-                    ) {
-                        shadowing.toggleVoiceMute()
+                    if !examController.isActive {
+                        notebookActionButton(
+                            shadowing.isListening ? "Stop listening" : "Talk to tutor",
+                            systemImage: shadowing.isListening ? "mic.fill" : "mic.slash.fill"
+                        ) {
+                            shadowing.toggleVoiceMute()
+                        }
                     }
 
                     notebookActionButton("Sources", systemImage: "doc.text.magnifyingglass") {
@@ -284,6 +389,41 @@ struct NotesView: View {
         }
         .foregroundStyle(.white)
         .frame(maxWidth: .infinity, minHeight: 56)
+        .confirmationDialog(
+            "Hand in now?",
+            isPresented: $showHandInConfirm,
+            titleVisibility: .visible
+        ) {
+            Button("Hand in & grade", role: .destructive) { examController.beginGrading() }
+            Button("Keep writing", role: .cancel) {}
+        } message: {
+            Text("You still have \(examController.clock) left. I’ll grade what’s on the page.")
+        }
+    }
+
+    /// Red countdown pill that sits beside the back button during an exam.
+    private var examTimerPill: some View {
+        Button {
+            showHandInConfirm = true
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: "timer")
+                Text(examController.clock).monospacedDigit()
+            }
+            .font(.headline.weight(.bold))
+            .foregroundStyle(.white)
+            .padding(.horizontal, 15)
+            .frame(height: 48)
+            .background(
+                Color.red.opacity(examController.isRunningLow ? 0.92 : 0.72),
+                in: Capsule()
+            )
+            .overlay(Capsule().stroke(Color.white.opacity(0.18), lineWidth: 0.5))
+            .shadow(color: .black.opacity(0.18), radius: 14, y: 5)
+            .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Time remaining \(examController.clock). Tap to hand in.")
     }
 
     private func notebookActionButton(

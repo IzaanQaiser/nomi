@@ -168,4 +168,10 @@ struct GradedQuestion: Codable, Equatable {
     let awarded: Int
     let marks: Int
     let feedback: String
+    let correctAnswer: String?
+
+    enum CodingKeys: String, CodingKey {
+        case number, awarded, marks, feedback
+        case correctAnswer = "correct_answer"
+    }
 }
