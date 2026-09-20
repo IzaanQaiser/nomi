@@ -17,8 +17,7 @@ final class ClassroomSession {
     var suggestions: [String] = []
     var isLoadingSuggestions = false
     var lesson: ClassroomLesson?
-    /// Playhead for the next rewind/pause/speak/draw pass. Unused this step.
-    var playhead = 0
+    let player = ClassroomLessonPlayer()
     var errorMessage: String?
     private var prepareGeneration = 0
 
@@ -64,7 +63,7 @@ final class ClassroomSession {
         guard !topic.isEmpty, phase != .preparing else { return }
         self.topic = topic
         lesson = nil
-        playhead = 0
+        player.reset()
         errorMessage = nil
         phase = .preparing
         prepareGeneration += 1
@@ -79,6 +78,7 @@ final class ClassroomSession {
             guard generation == prepareGeneration else { return }
             if prepared.inScope, !prepared.beats.isEmpty {
                 lesson = prepared
+                player.load(prepared)
                 phase = .teaching
             } else {
                 phase = .picking
@@ -96,7 +96,7 @@ final class ClassroomSession {
         prepareGeneration += 1
         phase = .picking
         lesson = nil
-        playhead = 0
+        player.reset()
     }
 
     func resetToPicker() {
@@ -104,7 +104,7 @@ final class ClassroomSession {
         phase = .picking
         topic = ""
         lesson = nil
-        playhead = 0
+        player.reset()
         errorMessage = nil
     }
 }
@@ -261,17 +261,28 @@ struct ClassroomView: View {
             .padding(.bottom, 10)
 
             HStack(alignment: .center, spacing: 22) {
-                ClassroomBoardView(lesson: session.lesson, playhead: session.playhead)
+                ClassroomBoardView(player: session.player)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
 
-                NomiView(pose: .idle)
-                    .frame(width: 168, height: 168)
-                    .accessibilityLabel("Nomi")
+                VStack(spacing: 14) {
+                    NomiView(pose: session.player.playbackState == .playing ? .talk : .idle)
+                        .frame(width: 168, height: 168)
+                        .accessibilityLabel("Nomi")
+
+                    if let beat = session.player.currentBeat {
+                        Text(beat.title)
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(NomiTheme.secondaryInk)
+                            .multilineTextAlignment(.center)
+                            .lineLimit(2)
+                            .frame(maxWidth: 190)
+                    }
+                }
             }
             .padding(.horizontal, 28)
             .padding(.top, 8)
 
-            ClassroomTransportBar()
+            ClassroomTransportBar(player: session.player)
                 .padding(.top, 18)
                 .padding(.bottom, 22)
         }
@@ -469,54 +480,178 @@ private struct ClassroomPickerForm: View {
     }
 }
 
-/// Empty board for this step. Later this reads `lesson.beats[playhead].board`.
 private struct ClassroomBoardView: View {
-    let lesson: ClassroomLesson?
-    let playhead: Int
+    let player: ClassroomLessonPlayer
 
     var body: some View {
-        RoundedRectangle(cornerRadius: 28, style: .continuous)
-            .fill(NomiTheme.surface)
-            .overlay {
-                RoundedRectangle(cornerRadius: 28, style: .continuous)
-                    .stroke(NomiTheme.hairline, lineWidth: 1)
+        ZStack {
+            RoundedRectangle(cornerRadius: 28, style: .continuous)
+                .fill(NomiTheme.surface)
+                .overlay {
+                    RoundedRectangle(cornerRadius: 28, style: .continuous)
+                        .stroke(NomiTheme.hairline, lineWidth: 1)
+                }
+                .shadow(color: NomiTheme.ink.opacity(0.04), radius: 18, y: 8)
+
+            if let beat = player.currentBeat {
+                VStack(alignment: .leading, spacing: 18) {
+                    HStack(spacing: 12) {
+                        Text(player.positionLabel.uppercased())
+                            .font(.caption.weight(.bold))
+                            .tracking(1.1)
+                            .foregroundStyle(NomiTheme.blue)
+
+                        ProgressView(value: player.progress)
+                            .tint(NomiTheme.blue)
+                    }
+
+                    Text(beat.title)
+                        .font(.system(size: 30, weight: .bold))
+                        .tracking(-0.5)
+                        .foregroundStyle(NomiTheme.ink)
+
+                    Text(beat.speaking)
+                        .font(.system(size: 21, weight: .regular))
+                        .foregroundStyle(NomiTheme.ink)
+                        .lineSpacing(6)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    Spacer(minLength: 12)
+
+                    boardTrail
+                }
+                .padding(34)
+                .transition(.opacity.combined(with: .move(edge: .trailing)))
+                .id(beat.id)
+            } else {
+                ProgressView()
+                    .tint(NomiTheme.blue)
             }
-            .shadow(color: NomiTheme.ink.opacity(0.04), radius: 18, y: 8)
-            .accessibilityElement(children: .ignore)
-            .accessibilityLabel("Lesson board")
-            .accessibilityValue(boardValue)
+        }
+        .animation(.easeInOut(duration: 0.22), value: player.currentBeatIndex)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Lesson board")
+        .accessibilityValue(boardValue)
+    }
+
+    @ViewBuilder
+    private var boardTrail: some View {
+        let cues = player.visibleBeats.filter { $0.board.kind != "none" && !$0.board.instruction.isEmpty }
+        if !cues.isEmpty {
+            VStack(alignment: .leading, spacing: 8) {
+                Text("ON THE BOARD")
+                    .font(.caption2.weight(.bold))
+                    .tracking(1)
+                    .foregroundStyle(NomiTheme.secondaryInk)
+
+                ForEach(cues.suffix(3)) { beat in
+                    HStack(alignment: .firstTextBaseline, spacing: 10) {
+                        Image(systemName: boardIcon(for: beat.board.kind))
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(NomiTheme.blue)
+                            .frame(width: 18)
+                        Text(beat.board.instruction)
+                            .font(.subheadline)
+                            .foregroundStyle(NomiTheme.secondaryInk)
+                            .lineLimit(2)
+                    }
+                }
+            }
+            .padding(16)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(NomiTheme.paper, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        }
+    }
+
+    private func boardIcon(for kind: String) -> String {
+        switch kind {
+        case "equation": "function"
+        case "diagram": "point.3.connected.trianglepath.dotted"
+        case "list": "list.bullet"
+        default: "pencil.line"
+        }
     }
 
     private var boardValue: String {
-        guard let lesson, lesson.beats.indices.contains(playhead) else {
-            return "Waiting for Nomi"
-        }
-        return lesson.beats[playhead].title
+        guard let beat = player.currentBeat else { return "Waiting for Nomi" }
+        return "\(player.positionLabel), \(beat.title). \(beat.speaking)"
     }
 }
 
 private struct ClassroomTransportBar: View {
+    let player: ClassroomLessonPlayer
+
     var body: some View {
-        HStack(spacing: 44) {
-            label("rewind", systemImage: "backward.end.fill")
-            label("pause", systemImage: "pause.fill")
-            label("ask nomi", systemImage: "bubble.left.fill")
+        HStack(spacing: 24) {
+            control(
+                "previous",
+                systemImage: "backward.end.fill",
+                enabled: player.canMoveBackward,
+                action: player.moveBackward
+            )
+
+            control(
+                playbackTitle,
+                systemImage: playbackIcon,
+                prominent: true,
+                action: player.togglePlayback
+            )
+
+            control(
+                "next",
+                systemImage: "forward.end.fill",
+                enabled: player.canMoveForward,
+                action: player.moveForward
+            )
+
+            control("ask nomi", systemImage: "bubble.left.fill", enabled: false) {}
         }
-        .padding(.horizontal, 24)
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel("Lesson controls")
-        .accessibilityHint("Rewind, pause, and ask Nomi will be available in a later step.")
+        .padding(.horizontal, 18)
+        .padding(.vertical, 10)
+        .background(NomiTheme.surface, in: Capsule())
+        .overlay(Capsule().stroke(NomiTheme.hairline, lineWidth: 1))
+        .shadow(color: NomiTheme.ink.opacity(0.06), radius: 12, y: 5)
     }
 
-    private func label(_ title: String, systemImage: String) -> some View {
-        VStack(spacing: 7) {
-            Image(systemName: systemImage)
-                .font(.system(size: 16, weight: .semibold))
-            Text(title)
-                .font(.subheadline.weight(.medium))
+    private var playbackTitle: String {
+        switch player.playbackState {
+        case .playing: "pause"
+        case .completed: "replay"
+        case .ready, .paused: "play"
         }
-        .foregroundStyle(NomiTheme.secondaryInk)
-        .frame(minWidth: 72)
+    }
+
+    private var playbackIcon: String {
+        switch player.playbackState {
+        case .playing: "pause.fill"
+        case .completed: "arrow.counterclockwise"
+        case .ready, .paused: "play.fill"
+        }
+    }
+
+    private func control(
+        _ title: String,
+        systemImage: String,
+        enabled: Bool = true,
+        prominent: Bool = false,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            VStack(spacing: 6) {
+                Image(systemName: systemImage)
+                    .font(.system(size: 16, weight: .semibold))
+                    .frame(height: 20)
+                Text(title)
+                    .font(.caption.weight(.semibold))
+            }
+            .foregroundStyle(prominent ? Color.white : NomiTheme.ink)
+            .frame(minWidth: 68, minHeight: 48)
+            .background(prominent ? NomiTheme.blue : Color.clear, in: Capsule())
+            .opacity(enabled ? 1 : 0.35)
+        }
+        .buttonStyle(.plain)
+        .disabled(!enabled)
+        .accessibilityLabel(title)
     }
 }
 
