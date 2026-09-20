@@ -66,6 +66,18 @@ private final class ProjectDetailModel {
     var sources: [Source] = []
     var notebooks: [ProjectNotebook]
     var isLoading = false
+
+    /// Blank / source notebooks the student made (exams live in their own list).
+    var regularNotebooks: [ProjectNotebook] {
+        notebooks.filter { !ExamStore.isExam(storageID: $0.storageID(projectID: project.id)) }
+    }
+
+    /// Generated exam notebooks, newest first.
+    var examNotebooks: [ProjectNotebook] {
+        notebooks
+            .filter { ExamStore.isExam(storageID: $0.storageID(projectID: project.id)) }
+            .sorted { $0.createdAt > $1.createdAt }
+    }
     var isRenaming = false
     var errorMessage: String?
 
@@ -195,6 +207,8 @@ struct ProjectDetailView: View {
     @State private var projectName = ""
     @State private var isDeleting = false
     @State private var isGeneratingExam = false
+    @State private var showPastExams = false
+    @State private var pendingExamOpen: ProjectNotebook?
     @State private var notebookForInfo: ProjectNotebook?
     @State private var notebookPendingRename: ProjectNotebook?
     @State private var notebookPendingDeletion: ProjectNotebook?
@@ -235,6 +249,17 @@ struct ProjectDetailView: View {
         }
         .fullScreenCover(isPresented: $isGeneratingExam) {
             ExamLoadingView()
+        }
+        .sheet(isPresented: $showPastExams, onDismiss: {
+            if let notebook = pendingExamOpen {
+                pendingExamOpen = nil
+                notebookToOpen = notebook
+            }
+        }) {
+            PastExamsSheet(project: model.project, exams: model.examNotebooks) { notebook in
+                pendingExamOpen = notebook
+                showPastExams = false
+            }
         }
         .task {
             await model.load()
@@ -483,40 +508,66 @@ struct ProjectDetailView: View {
     }
 
     private var examPrepCard: some View {
-        Button {
-            startExamPrep()
-        } label: {
-            HStack(spacing: 15) {
-                ZStack {
-                    RoundedRectangle(cornerRadius: 14, style: .continuous)
-                        .fill(NomiTheme.blue.opacity(0.14))
-                        .frame(width: 58, height: 58)
-                    Image(systemName: "graduationcap.fill")
-                        .font(.system(size: 24, weight: .semibold))
-                        .foregroundStyle(NomiTheme.blue)
-                }
+        HStack(spacing: 12) {
+            Button {
+                startExamPrep()
+            } label: {
+                HStack(spacing: 15) {
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                            .fill(NomiTheme.blue.opacity(0.12))
+                            .frame(width: 52, height: 52)
+                        Image(systemName: "graduationcap.fill")
+                            .font(.system(size: 22, weight: .semibold))
+                            .foregroundStyle(NomiTheme.blue)
+                    }
 
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Exam Prep")
-                        .font(.headline)
-                        .foregroundStyle(NomiTheme.ink)
-                    Text("I’ll build a likely exam from your notes, past exams and assignments — then grade it when time’s up.")
-                        .font(.subheadline)
-                        .foregroundStyle(NomiTheme.secondaryInk)
-                        .multilineTextAlignment(.leading)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("Exam Prep")
+                            .font(.headline)
+                            .foregroundStyle(NomiTheme.ink)
+                        Text("Build a likely exam, then grade it.")
+                            .font(.subheadline)
+                            .foregroundStyle(NomiTheme.secondaryInk)
+                            .multilineTextAlignment(.leading)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
 
-                Spacer(minLength: 0)
-                Image(systemName: "chevron.right")
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(NomiTheme.secondaryInk)
+                    Spacer(minLength: 0)
+                }
+                .padding(16)
+                .frame(maxWidth: .infinity)
+                .background(NomiTheme.surface, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        .stroke(NomiTheme.hairline, lineWidth: 1)
+                )
             }
-            .padding(18)
-            .background(NomiTheme.blue.opacity(0.065), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+            .buttonStyle(.plain)
+            .disabled(model.isLoading)
+
+            Button {
+                showPastExams = true
+            } label: {
+                VStack(spacing: 6) {
+                    Image(systemName: "clock.arrow.circlepath")
+                        .font(.system(size: 20, weight: .semibold))
+                        .foregroundStyle(NomiTheme.blue)
+                    Text("Past\nexams")
+                        .font(.caption.weight(.semibold))
+                        .multilineTextAlignment(.center)
+                        .foregroundStyle(NomiTheme.ink)
+                }
+                .frame(width: 88)
+                .padding(.vertical, 16)
+                .background(NomiTheme.surface, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        .stroke(NomiTheme.hairline, lineWidth: 1)
+                )
+            }
+            .buttonStyle(.plain)
         }
-        .buttonStyle(.plain)
-        .disabled(model.isLoading)
     }
 
     private func startExamPrep() {
@@ -597,7 +648,7 @@ struct ProjectDetailView: View {
                     alignment: .leading,
                     spacing: 20
                 ) {
-                    ForEach(model.notebooks) { notebook in
+                    ForEach(model.regularNotebooks) { notebook in
                         NavigationLink {
                             ProjectShellView(project: model.project, notebook: notebook)
                         } label: {
@@ -645,7 +696,7 @@ struct ProjectDetailView: View {
     }
 
     private var projectSummary: String {
-        "\(model.notebooks.count) \(model.notebooks.count == 1 ? "notebook" : "notebooks")  •  \(model.sources.count) \(model.sources.count == 1 ? "source" : "sources")"
+        "\(model.regularNotebooks.count) \(model.regularNotebooks.count == 1 ? "notebook" : "notebooks")  •  \(model.sources.count) \(model.sources.count == 1 ? "source" : "sources")"
     }
 
     private var readyPDFSources: [Source] {

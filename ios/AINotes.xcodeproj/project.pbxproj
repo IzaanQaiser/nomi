@@ -31,6 +31,7 @@
 		CA82DD47EA7BAA6C2236D59D /* ProjectShellView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2150C64B92C8C4547D8384A1 /* ProjectShellView.swift */; };
 		CC4A090CCC1AD1E05867729B /* ExamStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = E139EE49834D2DA9A276C1A5 /* ExamStore.swift */; };
 		D03241E026F053FF09174685 /* APIClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = B6A0F7838FC7E64FA1C2BEC1 /* APIClient.swift */; };
+		D403DB5517A38AB344AB5CC5 /* PastExamsSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D5654092B17F48164BE3A0C /* PastExamsSheet.swift */; };
 		DE29E0382ED23ECB25AC56E9 /* OnboardingFlowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0A5CB77D203F0F87CC0E8AA /* OnboardingFlowView.swift */; };
 		E1A0C0F2F66FF4B03D5698E7 /* ShadowingEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = AE44840C36985C7FBA06409C /* ShadowingEngine.swift */; };
 		ED54A8650A2E2713AFB64885 /* ProjectsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B328DED5D19F65E7005C51CA /* ProjectsView.swift */; };
@@ -52,6 +53,7 @@
 		32494E3A63F521213FB6314A /* PageImageStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PageImageStore.swift; sourceTree = "<group>"; };
 		3B7C3834AC2B3B2549409FB2 /* RootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootView.swift; sourceTree = "<group>"; };
 		47ABD97E6DD12C9BAE5D997C /* FirstLaunchView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FirstLaunchView.swift; sourceTree = "<group>"; };
+		4D5654092B17F48164BE3A0C /* PastExamsSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PastExamsSheet.swift; sourceTree = "<group>"; };
 		5121BDAB652C33EF3227270A /* NomiView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NomiView.swift; sourceTree = "<group>"; };
 		635835C96E63796AB7AAEC78 /* SourcesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SourcesView.swift; sourceTree = "<group>"; };
 		63AF9CCC0C632A30ACEA2CA1 /* PaperStyle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PaperStyle.swift; sourceTree = "<group>"; };
@@ -133,6 +135,7 @@
 				AA45C39EA21491C01F181FDF /* ExamMascotView.swift */,
 				E32A9DA72323CC125FAAF338 /* ExamPDFRenderer.swift */,
 				E139EE49834D2DA9A276C1A5 /* ExamStore.swift */,
+				4D5654092B17F48164BE3A0C /* PastExamsSheet.swift */,
 			);
 			path = Exam;
 			sourceTree = "<group>";
@@ -313,6 +316,7 @@
 				56E9B90C5182C3AB0BD94489 /* PDFNoteStore.swift in Sources */,
 				B4B86CD0CACFC4F9B57E3AE2 /* PageImageStore.swift in Sources */,
 				A35E78F080C7CCD4D73DD89E /* PaperStyle.swift in Sources */,
+				D403DB5517A38AB344AB5CC5 /* PastExamsSheet.swift in Sources */,
 				C5DB9AC741160E937F70C0DF /* ProjectDetailView.swift in Sources */,
 				CA82DD47EA7BAA6C2236D59D /* ProjectShellView.swift in Sources */,
 				ED54A8650A2E2713AFB64885 /* ProjectsView.swift in Sources */,

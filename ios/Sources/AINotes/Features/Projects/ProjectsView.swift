@@ -293,20 +293,18 @@ struct ProjectsView: View {
 
     private var mascotCanvas: some View {
         GeometryReader { proxy in
-            let mascotSize = min(320, max(240, min(proxy.size.width, proxy.size.height) * 0.40))
+            // Nomi fills the free space, centered in the panel.
+            let side = max(proxy.size.width, proxy.size.height) * 1.15
 
-            VStack(spacing: 26) {
+            ZStack {
                 NomiView(pose: .idle)
-                    .frame(width: mascotSize, height: mascotSize)
+                    .frame(width: side, height: side)
                     .accessibilityHidden(true)
-
-                Text("lets get this money")
-                    .font(.title2.weight(.medium))
-                    .foregroundStyle(NomiTheme.ink)
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+            .frame(width: proxy.size.width, height: proxy.size.height)
         }
         .background(NomiTheme.surface)
+        .clipped()
     }
 
     private var settingsButton: some View {
