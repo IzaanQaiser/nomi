@@ -508,7 +508,7 @@ private struct ClassroomBoardView: View {
                 .shadow(color: NomiTheme.ink.opacity(0.04), radius: 18, y: 8)
 
             if let beat = player.currentBeat {
-                VStack(alignment: .leading, spacing: 18) {
+                VStack(alignment: .leading, spacing: 14) {
                     HStack(spacing: 12) {
                         Text(player.positionLabel.uppercased())
                             .font(.caption.weight(.bold))
@@ -520,22 +520,35 @@ private struct ClassroomBoardView: View {
                     }
 
                     Text(beat.title)
-                        .font(.system(size: 30, weight: .bold))
+                        .font(.system(size: 24, weight: .bold))
                         .tracking(-0.5)
                         .foregroundStyle(NomiTheme.ink)
 
+                    Group {
+                        if player.resolvedBoardActions.isEmpty {
+                            legacyBoardFallback(for: beat)
+                        } else {
+                            ClassroomBoardRenderer(actions: player.resolvedBoardActions)
+                                .id(player.resolvedBoardActions.map(\.id).joined(separator: "|"))
+                                .transition(.opacity)
+                        }
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+
                     Text(beat.speaking)
-                        .font(.system(size: 21, weight: .regular))
-                        .foregroundStyle(NomiTheme.ink)
-                        .lineSpacing(6)
-                        .fixedSize(horizontal: false, vertical: true)
-
-                    Spacer(minLength: 12)
-
-                    boardTrail
+                        .font(.subheadline)
+                        .foregroundStyle(NomiTheme.secondaryInk)
+                        .lineSpacing(3)
+                        .lineLimit(3)
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 10)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(
+                            NomiTheme.paper,
+                            in: RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        )
                 }
-                .padding(34)
-                .transition(.opacity.combined(with: .move(edge: .trailing)))
+                .padding(28)
                 .id(beat.id)
             } else {
                 ProgressView()
@@ -549,72 +562,20 @@ private struct ClassroomBoardView: View {
     }
 
     @ViewBuilder
-    private var boardTrail: some View {
-        let actions = player.resolvedBoardActions
-        let legacyCues = player.visibleBeats.filter {
-            $0.board.actions.isEmpty && $0.board.kind != "none" && !$0.board.instruction.isEmpty
-        }
-        if !actions.isEmpty || !legacyCues.isEmpty {
-            VStack(alignment: .leading, spacing: 8) {
-                Text("ON THE BOARD")
-                    .font(.caption2.weight(.bold))
-                    .tracking(1)
-                    .foregroundStyle(NomiTheme.secondaryInk)
-
-                ForEach(actions.suffix(3)) { action in
-                    HStack(alignment: .firstTextBaseline, spacing: 10) {
-                        Image(systemName: boardIcon(for: action))
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(NomiTheme.blue)
-                            .frame(width: 18)
-                        Text(action.previewDescription)
-                            .font(.subheadline)
-                            .foregroundStyle(NomiTheme.secondaryInk)
-                            .lineLimit(2)
-                    }
-                }
-
-                if actions.isEmpty {
-                    ForEach(legacyCues.suffix(3)) { beat in
-                        HStack(alignment: .firstTextBaseline, spacing: 10) {
-                            Image(systemName: legacyBoardIcon(for: beat.board.kind))
-                                .font(.caption.weight(.semibold))
-                                .foregroundStyle(NomiTheme.blue)
-                                .frame(width: 18)
-                            Text(beat.board.instruction)
-                                .font(.subheadline)
-                                .foregroundStyle(NomiTheme.secondaryInk)
-                                .lineLimit(2)
-                        }
-                    }
-                }
+    private func legacyBoardFallback(for beat: ClassroomLessonBeat) -> some View {
+        if !beat.board.instruction.isEmpty {
+            VStack(spacing: 12) {
+                Image(systemName: "rectangle.and.pencil.and.ellipsis")
+                    .font(.system(size: 28, weight: .medium))
+                    .foregroundStyle(NomiTheme.blue)
+                Text(beat.board.instruction)
+                    .font(.title3.weight(.medium))
+                    .multilineTextAlignment(.center)
+                    .foregroundStyle(NomiTheme.ink)
             }
-            .padding(16)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(NomiTheme.paper, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-        }
-    }
-
-    private func boardIcon(for action: ClassroomBoardAction) -> String {
-        switch action {
-        case let .writeText(value): value.style == "equation" ? "function" : "textformat"
-        case .drawLine: "line.diagonal"
-        case .drawArrow: "arrow.right"
-        case .drawRectangle: "rectangle"
-        case .drawAxes: "chart.xyaxis.line"
-        case .plotPolyline: "chart.line.uptrend.xyaxis"
-        case .highlight: "highlighter"
-        case .clear: "eraser"
-        case .unsupported: "questionmark"
-        }
-    }
-
-    private func legacyBoardIcon(for kind: String) -> String {
-        switch kind {
-        case "equation": "function"
-        case "diagram": "point.3.connected.trianglepath.dotted"
-        case "list": "list.bullet"
-        default: "pencil.line"
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else {
+            Color.clear
         }
     }
 

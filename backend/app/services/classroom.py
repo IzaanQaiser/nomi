@@ -58,7 +58,8 @@ _PREPARE_SYSTEM = (
     "write_text style must be heading, body, equation, label, or emphasis. "
     "Line and polyline style must be solid or dashed. Rectangle style must be "
     "outline or filled. Frame x/y is its top-left corner; width/height extend "
-    "right and down and must remain inside the board. "
+    "right and down and must remain inside the board. write_text position is "
+    "the text's top-left anchor. "
     "Never include IDs; the server assigns them. "
     "Respond with STRICT JSON only, no prose and no code fences, matching:\n"
     '{"in_scope": bool, "topic": str, "title": str, "reason": str|null, '

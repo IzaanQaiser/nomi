@@ -100,7 +100,8 @@ to the board, with `(0, 0)` at the top-left. Supported operations are
 `plot_polyline`, `highlight`, and `clear`. Actions persist between beats;
 `clear` resets Nomi's board layer. The server validates geometry, assigns stable
 action IDs, and removes unsupported or malformed model output before returning
-the lesson.
+the lesson. A `write_text.position` is the text's top-left anchor; frame `x/y`
+is likewise the top-left corner and width/height extend right and down.
 
 ## Architecture notes
 
